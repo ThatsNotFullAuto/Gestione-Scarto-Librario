@@ -1,5 +1,13 @@
 # Changelog
 
+## 9.4.5 - 2026-08-20
+
+- Resi identici byte-per-byte il riepilogo PDF allegato all'email e quello scaricato dalla conferma pubblica.
+- Uniformati i piè di pagina PDF ai recapiti configurati nel pannello WordPress.
+- Assegnato all'allegato il nome leggibile `prenotazione_CODICE.pdf` in una directory temporanea privata e casuale.
+- Rimossi email e fingerprint dai nuovi eventi di audit creati dopo un'anonimizzazione.
+- Aggiunti controlli statici e test diretto del renderer PDF PHP.
+
 ## 9.4.4 - 2026-08-20
 
 - Corretto il ripristino delle prenotazioni in sede prive di email e dotate di domicilio.

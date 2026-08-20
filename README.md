@@ -2,7 +2,7 @@
 
 Plugin WordPress della Biblioteca statale Stelio Crise per pubblicare un catalogo di volumi destinati allo scarto, acquisire prenotazioni verificate tramite email e supportare il lavoro degli operatori nel pannello amministrativo.
 
-Versione corrente: **9.4.4**. Requisiti minimi: WordPress 6.6, PHP 8.2 e HTTPS. Il frontend usa React e TypeScript; il backend usa API REST WordPress e tabelle dedicate.
+Versione corrente: **9.4.5**. Requisiti minimi: WordPress 6.6, PHP 8.2 e HTTPS. Il frontend usa React e TypeScript; il backend usa API REST WordPress e tabelle dedicate.
 
 ## Funzioni principali
 
@@ -23,11 +23,11 @@ Versione corrente: **9.4.4**. Requisiti minimi: WordPress 6.6, PHP 8.2 e HTTPS. 
 - `docs/operations/`: installazione, hardening, privacy e gestione operativa.
 - `docs/history/`: piani e verifiche delle versioni precedenti, conservati come storico.
 - `fixtures/`: dati esclusivamente fittizi per prove locali.
-- `releases/`: ZIP installabili versionati e checksum SHA-256; la 9.4.4 e la release corrente.
+- `releases/`: ZIP installabili versionati e checksum SHA-256; la 9.4.5 è la release corrente.
 
 ## Installazione
 
-Usare `releases/gestione-scarto-librario-9.4.4.zip` da **Plugin > Aggiungi plugin > Carica plugin**. Prima dell'aggiornamento eseguire un backup e leggere `docs/operations/UPGRADE-9.4.4.md`. Verificare sempre il checksum pubblicato.
+Usare `releases/gestione-scarto-librario-9.4.5.zip` da **Plugin > Aggiungi plugin > Carica plugin**. Prima dell'aggiornamento eseguire un backup e leggere `docs/operations/UPGRADE-9.4.5.md`. Verificare sempre il checksum pubblicato.
 
 ## Sviluppo e verifica
 
