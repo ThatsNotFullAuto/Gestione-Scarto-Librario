@@ -1,0 +1,867 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+   ============================================================================
+   PREFLIGHT FORZATO - Reset specifico per isolare l'app dal tema WordPress
+   ============================================================================
+*/
+
+/* Stili base per il container principale */
+#scarto-librario-root {
+    font-family: 'Titillium Web', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    line-height: 1.5;
+    color: #1f2937;
+    min-height: 100vh;
+    width: 100%;
+    isolation: isolate;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body.wp-admin #scarto-librario-root {
+    min-height: calc(100vh - 100px);
+}
+
+#scarto-librario-root .scarto-loading-screen {
+    background: linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
+}
+
+#scarto-librario-root .scarto-loading-panel {
+    width: min(32rem, 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+}
+
+#scarto-librario-root .scarto-progress-track {
+    width: 100%;
+    height: 0.75rem;
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+}
+
+#scarto-librario-root .scarto-progress-track > span {
+    display: block;
+    height: 100%;
+    min-width: 0.2rem;
+    background: var(--scarto-accent, #2563eb);
+    transition: width 180ms ease-out;
+}
+
+#scarto-librario-root .scarto-loading-dots i {
+    display: inline-block;
+    font-style: normal;
+    animation: scarto-loading-dot 1.2s infinite both;
+}
+
+#scarto-librario-root .scarto-loading-dots i:nth-child(2) { animation-delay: 0.16s; }
+#scarto-librario-root .scarto-loading-dots i:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes scarto-loading-dot {
+    0%, 30%, 100% { opacity: 0.25; transform: translateY(0); }
+    55% { opacity: 1; transform: translateY(-0.16rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #scarto-librario-root .scarto-loading-dots i { animation: none; opacity: 1; }
+    #scarto-librario-root .scarto-progress-track > span { transition: none; }
+}
+
+body.wp-admin #scarto-librario-root .scarto-admin-header {
+    top: 32px;
+}
+
+@media (max-width: 782px) {
+    body.wp-admin #scarto-librario-root .scarto-admin-header {
+        top: 46px;
+    }
+}
+
+/* ============================================================================
+   1. RESET BOX SIZING E BORDI
+   ============================================================================ */
+#scarto-librario-root *,
+#scarto-librario-root ::before,
+#scarto-librario-root ::after {
+    box-sizing: border-box;
+    border-width: 0;
+    border-style: solid;
+    border-color: #e5e7eb;
+}
+
+/* ============================================================================
+   2. RESET ELEMENTI FORM
+   ============================================================================ */
+#scarto-librario-root input,
+#scarto-librario-root select,
+#scarto-librario-root textarea {
+    font-family: inherit;
+    font-size: 100%;
+    line-height: inherit;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+}
+
+#scarto-librario-root button {
+    cursor: pointer;
+    text-transform: none;
+    font-family: inherit;
+    background-color: transparent;
+    background-image: none;
+}
+
+/* Checkbox amministrative isolate dagli stili del tema e di WordPress. */
+#scarto-librario-root .scarto-admin-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    min-width: 1.25rem;
+    border: 2px solid #64748b;
+    border-radius: 0.25rem;
+    background: #fff;
+    display: inline-grid;
+    place-content: center;
+    cursor: pointer;
+}
+
+#scarto-librario-root .scarto-admin-checkbox::before {
+    content: '';
+    width: 0.62rem;
+    height: 0.36rem;
+    border: solid #fff;
+    border-width: 0 0 2px 2px;
+    transform: rotate(-45deg) scale(0);
+    transform-origin: center;
+}
+
+#scarto-librario-root .scarto-admin-checkbox:checked {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
+}
+
+#scarto-librario-root .scarto-admin-checkbox:checked::before {
+    transform: rotate(-45deg) scale(1);
+}
+
+#scarto-librario-root .scarto-admin-checkbox:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.35);
+    outline-offset: 2px;
+}
+
+#scarto-librario-root .scarto-admin-checkbox:disabled {
+    border-color: #cbd5e1;
+    background-color: #e2e8f0;
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+/* Fix specifico per input text e search */
+#scarto-librario-root input[type="text"],
+#scarto-librario-root input[type="password"],
+#scarto-librario-root input[type="search"],
+#scarto-librario-root input[type="email"] {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: #fff;
+    border-style: solid;
+}
+
+/* Rimuovi la X di default nei campi search su WebKit */
+#scarto-librario-root input[type="search"]::-webkit-search-cancel-button,
+#scarto-librario-root input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* ============================================================================
+   3. RESET UTILITÀ
+   ============================================================================ */
+#scarto-librario-root ul,
+#scarto-librario-root ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+#scarto-librario-root a {
+    text-decoration: none;
+    color: inherit;
+}
+
+#scarto-librario-root table {
+    border-collapse: collapse;
+    width: 100%;
+    text-indent: 0;
+}
+
+#scarto-librario-root img,
+#scarto-librario-root svg {
+    display: block;
+    vertical-align: middle;
+}
+
+#scarto-librario-root h1,
+#scarto-librario-root h2,
+#scarto-librario-root h3,
+#scarto-librario-root h4,
+#scarto-librario-root h5,
+#scarto-librario-root h6 {
+    font-size: inherit;
+    font-weight: inherit;
+    margin: 0;
+}
+
+#scarto-librario-root p {
+    margin: 0;
+}
+
+/* ============================================================================
+   4. CLASSI CUSTOM
+   ============================================================================ */
+
+/* Tema pubblico configurabile, con valori convalidati lato WordPress. */
+#scarto-librario-root .scarto-public-app {
+    background-color: var(--scarto-background, #f9fafb);
+    color: var(--scarto-text, #1f2937);
+}
+
+#scarto-librario-root .library-gradient {
+    position: relative;
+    background-color: var(--scarto-background, #f9fafb);
+}
+
+#scarto-librario-root .library-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--scarto-primary, #1e3a8a) 0%, var(--scarto-secondary, #3b82f6) 100%);
+    opacity: var(--scarto-header-opacity, 1);
+    pointer-events: none;
+}
+
+#scarto-librario-root .library-gradient > * {
+    position: relative;
+    z-index: 1;
+}
+
+#scarto-librario-root .scarto-header-subtitle {
+    color: rgba(255, 255, 255, 0.82);
+}
+
+#scarto-librario-root .scarto-public-logo {
+    width: auto;
+    height: 3.5rem;
+    max-width: 9rem;
+    object-fit: contain;
+    flex: none;
+}
+
+#scarto-librario-root .scarto-links-bar a {
+    color: var(--scarto-primary, #1e3a8a);
+}
+
+#scarto-librario-root .scarto-accent-button {
+    background-color: var(--scarto-accent, #2563eb) !important;
+}
+
+#scarto-librario-root .scarto-accent-button:hover {
+    filter: brightness(0.9);
+}
+
+#scarto-librario-root .scarto-public-app .text-blue-900,
+#scarto-librario-root .scarto-public-app .text-blue-800,
+#scarto-librario-root .scarto-public-app .text-blue-700,
+#scarto-librario-root .scarto-public-app .text-blue-600 {
+    color: var(--scarto-primary, #1e3a8a) !important;
+}
+
+#scarto-librario-root .scarto-public-app .bg-blue-600,
+#scarto-librario-root .scarto-public-app .bg-blue-700,
+#scarto-librario-root .scarto-public-app .bg-blue-800 {
+    background-color: var(--scarto-accent, #2563eb) !important;
+}
+
+#scarto-librario-root .scarto-public-app .border-blue-600 {
+    border-color: var(--scarto-accent, #2563eb) !important;
+}
+
+/* Checkbox Custom: Forza il bordo visibile */
+.custom-checkbox-container {
+    border-width: 2px !important;
+    border-style: solid !important;
+    border-color: #9ca3af !important; /* gray-400 */
+    transition: all 0.15s ease-in-out;
+}
+
+.custom-checkbox-container:hover {
+    border-color: #6b7280 !important; /* gray-500 */
+}
+
+.custom-checkbox-container.selected {
+    border-color: var(--scarto-accent, #2563eb) !important;
+    background-color: var(--scarto-accent, #2563eb) !important;
+}
+
+/* ============================================================================
+   5. SCROLLBAR CUSTOM
+   ============================================================================ */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #bfdbfe #eff6ff;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #eff6ff;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #bfdbfe;
+    border-radius: 4px;
+    border: 2px solid #eff6ff;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #93c5fd;
+}
+
+/* ============================================================================
+   6. ANIMAZIONI
+   ============================================================================ */
+
+/* Fade In */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Bounce In */
+@keyframes bounceIn {
+    0% {
+        transform: scale(0.3);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+.animate-bounce-in {
+    animation: bounceIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+/* Spin */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Slide In Right */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+.animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out forwards;
+}
+
+/* Pulse */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ============================================================================
+   7. ACCESSIBILITÀ
+   ============================================================================ */
+
+/* Screen reader only */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Focus visible migliorato per accessibilità */
+#scarto-librario-root button:focus-visible,
+#scarto-librario-root input:focus-visible,
+#scarto-librario-root select:focus-visible,
+#scarto-librario-root textarea:focus-visible,
+#scarto-librario-root [tabindex]:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* Rimuovi outline per mouse, mantieni per keyboard */
+#scarto-librario-root button:focus:not(:focus-visible),
+#scarto-librario-root input:focus:not(:focus-visible),
+#scarto-librario-root [tabindex]:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* ============================================================================
+   8. UTILITIES AGGIUNTIVE
+   ============================================================================ */
+
+/* Previeni selezione testo su elementi interattivi */
+.select-none {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Permetti selezione testo (per codici prenotazione) */
+.select-all {
+    user-select: all;
+    -webkit-user-select: all;
+}
+
+/* Truncate text con ellipsis */
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================================================
+   9. PRINT STYLES
+   ============================================================================ */
+@media print {
+    #scarto-librario-root {
+        background: white !important;
+    }
+    
+    .library-gradient {
+        background: #1e3a8a !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    /* Nascondi elementi non necessari in stampa */
+    #scarto-librario-root button,
+    #scarto-librario-root input[type="search"] {
+        display: none !important;
+    }
+}
+
+/* ============================================================================
+   10. RESPONSIVE IMPROVEMENTS
+   ============================================================================ */
+
+/* Touch devices: migliora target touch */
+@media (hover: none) and (pointer: coarse) {
+    #scarto-librario-root button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    #scarto-librario-root input[type="text"],
+    #scarto-librario-root input[type="password"],
+    #scarto-librario-root input[type="search"] {
+        min-height: 44px;
+        font-size: 16px; /* Previene zoom su iOS */
+    }
+}
+
+/* Riduce motion per utenti con preferenze */
+@media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-bounce-in,
+    .animate-slide-in-right {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+    
+    .animate-spin {
+        animation-duration: 2s;
+    }
+    
+    * {
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ============================================================================
+   11. DARK MODE SUPPORT (futuro)
+   ============================================================================ */
+/*
+@media (prefers-color-scheme: dark) {
+    #scarto-librario-root {
+        color: #f3f4f6;
+        background-color: #111827;
+    }
+}
+*/
+
+/* ============================================================================
+   12. STILI FORM UTENTE E IMPOSTAZIONI (v6)
+   ============================================================================ */
+
+/* Form input con errore */
+#scarto-librario-root input.error,
+#scarto-librario-root select.error,
+#scarto-librario-root textarea.error {
+    border-color: #ef4444 !important;
+    background-color: #fef2f2;
+}
+
+/* Form input valido */
+#scarto-librario-root input.success,
+#scarto-librario-root select.success,
+#scarto-librario-root textarea.success {
+    border-color: #10b981 !important;
+    background-color: #f0fdf4;
+}
+
+/* Progress steps */
+.progress-step {
+    transition: all 0.3s ease;
+}
+
+.progress-step.active {
+    transform: scale(1.1);
+}
+
+.progress-step.completed {
+    background-color: #10b981;
+}
+
+/* Settings panel */
+.settings-section {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.settings-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* PDF button */
+.pdf-download-btn {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.pdf-download-btn:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+}
+
+/* Modal overlay blur */
+.modal-overlay {
+    backdrop-filter: blur(4px);
+}
+
+/* Badge stati prenotazione */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-badge.active {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.status-badge.completed {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.cancelled {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.status-badge.expired {
+    background-color: #ffedd5;
+    color: #9a3412;
+}
+
+/* Card shadow utilities */
+.card-shadow {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.card-shadow-hover:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+    .hide-on-mobile {
+        display: none !important;
+    }
+}
+
+@media (min-width: 641px) {
+    .show-on-mobile {
+        display: none !important;
+    }
+}
+
+/* Email input type specifico */
+#scarto-librario-root input[type="email"],
+#scarto-librario-root input[type="number"] {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: #fff;
+    border-style: solid;
+}
+
+/* ============================================================================
+   13. STILI PULSANTI - FINESTRE DI DIALOGO
+   ============================================================================ */
+
+/* Reset base per tutti i pulsanti nelle modal */
+#scarto-librario-root [role="dialog"] button,
+#scarto-librario-root .fixed button {
+    font-weight: 600;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    transition: all 0.2s ease;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    text-decoration: none;
+}
+
+/* Pulsante Primario (Blu) */
+#scarto-librario-root .btn-primary,
+#scarto-librario-root [role="dialog"] button.bg-blue-600,
+#scarto-librario-root .fixed button.bg-blue-600 {
+    background-color: #2563eb !important;
+    background-image: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+}
+
+#scarto-librario-root .btn-primary:hover,
+#scarto-librario-root [role="dialog"] button.bg-blue-600:hover,
+#scarto-librario-root .fixed button.bg-blue-600:hover {
+    background-color: #1d4ed8 !important;
+    background-image: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    box-shadow: 0 4px 8px rgba(37, 99, 235, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Pulsante Successo (Verde) */
+#scarto-librario-root .btn-success,
+#scarto-librario-root [role="dialog"] button.bg-green-600,
+#scarto-librario-root .fixed button.bg-green-600 {
+    background-color: #16a34a !important;
+    background-image: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(22, 163, 74, 0.3);
+}
+
+#scarto-librario-root .btn-success:hover,
+#scarto-librario-root [role="dialog"] button.bg-green-600:hover,
+#scarto-librario-root .fixed button.bg-green-600:hover {
+    background-color: #15803d !important;
+    background-image: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+    box-shadow: 0 4px 8px rgba(22, 163, 74, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Pulsante Secondario (Bianco/Grigio) */
+#scarto-librario-root .btn-secondary,
+#scarto-librario-root [role="dialog"] button.bg-white,
+#scarto-librario-root .fixed button.bg-white {
+    background-color: #ffffff !important;
+    color: #374151 !important;
+    border: 2px solid #d1d5db !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+#scarto-librario-root .btn-secondary:hover,
+#scarto-librario-root [role="dialog"] button.bg-white:hover,
+#scarto-librario-root .fixed button.bg-white:hover {
+    background-color: #f3f4f6 !important;
+    border-color: #9ca3af !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Pulsante Scuro (Grigio scuro/Nero) */
+#scarto-librario-root [role="dialog"] button.bg-gray-900,
+#scarto-librario-root .fixed button.bg-gray-900 {
+    background-color: #111827 !important;
+    background-image: linear-gradient(135deg, #1f2937 0%, #111827 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(17, 24, 39, 0.3);
+}
+
+#scarto-librario-root [role="dialog"] button.bg-gray-900:hover,
+#scarto-librario-root .fixed button.bg-gray-900:hover {
+    background-color: #1f2937 !important;
+    background-image: linear-gradient(135deg, #374151 0%, #1f2937 100%) !important;
+    box-shadow: 0 4px 8px rgba(17, 24, 39, 0.4);
+}
+
+/* Pulsante Pericolo (Rosso) */
+#scarto-librario-root .btn-danger,
+#scarto-librario-root [role="dialog"] button.bg-red-600,
+#scarto-librario-root .fixed button.bg-red-600 {
+    background-color: #dc2626 !important;
+    background-image: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);
+}
+
+#scarto-librario-root .btn-danger:hover,
+#scarto-librario-root [role="dialog"] button.bg-red-600:hover,
+#scarto-librario-root .fixed button.bg-red-600:hover {
+    background-color: #b91c1c !important;
+    background-image: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+    box-shadow: 0 4px 8px rgba(220, 38, 38, 0.4);
+}
+
+/* Pulsante Disabilitato */
+#scarto-librario-root [role="dialog"] button:disabled,
+#scarto-librario-root .fixed button:disabled,
+#scarto-librario-root [role="dialog"] button.bg-gray-400,
+#scarto-librario-root .fixed button.bg-gray-400,
+#scarto-librario-root [role="dialog"] button.bg-gray-300,
+#scarto-librario-root .fixed button.bg-gray-300 {
+    background-color: #9ca3af !important;
+    background-image: none !important;
+    color: #e5e7eb !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+    transform: none !important;
+    opacity: 0.7;
+}
+
+/* Pulsante Chiudi X (angolo modal) */
+#scarto-librario-root [role="dialog"] button.text-gray-400,
+#scarto-librario-root .fixed button.text-gray-400 {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: #9ca3af !important;
+    padding: 0.5rem !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#scarto-librario-root [role="dialog"] button.text-gray-400:hover,
+#scarto-librario-root .fixed button.text-gray-400:hover {
+    background-color: #f3f4f6 !important;
+    color: #4b5563 !important;
+    border-radius: 0.375rem;
+}
+
+/* Pulsanti piccoli (impostazioni, azioni secondarie) */
+#scarto-librario-root [role="dialog"] button.text-sm,
+#scarto-librario-root .fixed button.text-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+/* Pulsante link (solo testo) */
+#scarto-librario-root [role="dialog"] button.text-blue-600,
+#scarto-librario-root .fixed button.text-blue-600 {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: #2563eb !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    text-decoration: underline;
+}
+
+#scarto-librario-root [role="dialog"] button.text-blue-600:hover,
+#scarto-librario-root .fixed button.text-blue-600:hover {
+    color: #1d4ed8 !important;
+}
+
+/* Pulsante nel footer modal con bordo */
+#scarto-librario-root [role="dialog"] .bg-gray-50 button,
+#scarto-librario-root .fixed .bg-gray-50 button {
+    min-width: 120px;
+}
+
+/* Focus state per accessibilità */
+#scarto-librario-root [role="dialog"] button:focus-visible,
+#scarto-librario-root .fixed button:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+/* Pulsante con icona SVG */
+#scarto-librario-root [role="dialog"] button svg,
+#scarto-librario-root .fixed button svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+}
+
+/* Animazione click */
+#scarto-librario-root [role="dialog"] button:active:not(:disabled),
+#scarto-librario-root .fixed button:active:not(:disabled) {
+    transform: scale(0.98);
+}

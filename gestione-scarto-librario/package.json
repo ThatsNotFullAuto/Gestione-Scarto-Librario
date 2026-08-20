@@ -1,0 +1,42 @@
+{
+  "name": "gestione-scarto-librario-wp",
+  "version": "9.4.4",
+  "releaseDate": "2026-08-20T00:00:00.000Z",
+  "description": "Plugin WordPress per la gestione dello scarto librario con form utente, notifiche email e generazione PDF",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && node tools/build-assets.mjs",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "check:php": "node tools/php-syntax-check.mjs",
+    "check:security": "node tools/security-check.mjs",
+    "test:security:smoke": "node security-tests/smoke-test.mjs",
+    "test:security:smoke:self": "node tools/smoke-self-test.mjs",
+    "test:security:concurrency": "node security-tests/concurrency-test.mjs",
+    "test:security:active-limit": "node security-tests/active-limit-test.mjs",
+    "test:offline:backup": "php tests/offline-backup-test.php",
+    "test:offline:release": "node tools/verify-release.mjs",
+    "check": "npm run check:php && npm run check:security && npm run test:offline:backup && npm run type-check && npm audit && npm run build",
+    "release": "npm run check && node tools/build-release.mjs && npm run test:offline:release"
+  },
+  "dependencies": {
+    "jspdf": "^4.2.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.0.2",
+    "archiver": "^8.0.0",
+    "autoprefixer": "^10.5.0",
+    "php-parser": "^3.7.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}
