@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.4.6 - 2026-08-20
+
+- Corretto l'export Excel che indicava come disponibili i volumi già consegnati.
+- Acquisito uno snapshot globale aggiornato della disponibilità al momento dell'esportazione.
+- Rimossi dall'Excel i campi tecnici `_availability`, `_reserved`, `_delivered` e `reservedUntil`.
+- Aggiunto un controllo statico contro la regressione dello stato esportato.
+
 ## 9.4.5 - 2026-08-20
 
 - Resi identici byte-per-byte il riepilogo PDF allegato all'email e quello scaricato dalla conferma pubblica.
