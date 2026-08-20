@@ -1,6 +1,6 @@
 {
   "name": "gestione-scarto-librario-wp",
-  "version": "9.4.5",
+  "version": "9.4.6",
   "releaseDate": "2026-08-20T00:00:00.000Z",
   "description": "Plugin WordPress per la gestione dello scarto librario con form utente, notifiche email e generazione PDF",
   "private": true,

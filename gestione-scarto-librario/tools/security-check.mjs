@@ -344,6 +344,18 @@ if (/await loadData\(/.test(publicConfirmationFunction)
   failed = true;
   console.error('FAIL La conferma OTP ricarica il catalogo o non fornisce feedback operativo esplicito.');
 }
+const catalogExportFunction = frontend.slice(
+  frontend.indexOf('const handleExport = async'),
+  frontend.indexOf('const handleResetClick')
+);
+if (!/api\.getCatalogAvailability\(\)/.test(catalogExportFunction)
+    || !/availability === 'delivered'/.test(catalogExportFunction)
+    || !/'CONSEGNATO'/.test(catalogExportFunction)
+    || /staffReservations\.forEach/.test(catalogExportFunction)
+    || !/_ignoredAvailability/.test(catalogExportFunction)) {
+  failed = true;
+  console.error('FAIL L’export catalogo non usa lo snapshot globale aggiornato o include campi tecnici di disponibilita.');
+}
 const withdrawalPdfFunction = frontend.slice(
   frontend.indexOf('const generateReservationPDF'),
   frontend.indexOf('// CONFIGURAZIONE STILI FONT')

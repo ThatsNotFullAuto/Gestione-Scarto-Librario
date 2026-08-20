@@ -1,6 +1,6 @@
 /**
  * Gestione Scarto Librario - Frontend React
- * Version: 9.4.5
+ * Version: 9.4.6
  *
  * v8.8.0 Changes:
  * - Added privacy policy link display on public page
@@ -758,7 +758,7 @@ const api = {
             userData: onlineUserData,
             consent: {
                 accepted: true,
-                privacyVersion: '9.4.5'
+                privacyVersion: '9.4.6'
             }
         };
 
@@ -855,7 +855,7 @@ const adminApi = IS_WP_ADMIN ? {
             body: JSON.stringify({
                 booksDetails: books.map(book => ({ id: book.id })),
                 userData,
-                consent: { accepted: true, privacyVersion: '9.4.5' }
+                consent: { accepted: true, privacyVersion: '9.4.6' }
             })
         });
         const data = await res.json().catch(() => ({}));
@@ -3705,26 +3705,48 @@ const App: React.FC = () => {
     };
 
     const handleExport = async () => {
-        const XLSX = await import('xlsx');
-        const bookStatesMap = new Map<string, string>();
-        staffReservations.forEach(res => {
-            if (res.status === 'completed') res.bookIds.forEach(id => bookStatesMap.set(id, 'RITIRATO'));
-            else if (res.status === 'active') res.bookIds.forEach(id => bookStatesMap.set(id, 'PRENOTATO'));
-            else if (res.status === 'expired') res.bookIds.forEach(id => bookStatesMap.set(id, 'SCADUTO'));
-        });
+        if (isUploading) return;
+        setIsUploading(true);
+        setImportFeedback('Preparazione dell’esportazione aggiornata in corso...');
+        try {
+            const [XLSX, availabilitySnapshot] = await Promise.all([
+                import('xlsx'),
+                api.getCatalogAvailability(),
+            ]);
+            const availabilityById = new Map(
+                availabilitySnapshot.states.map(state => [String(state.id), state._availability])
+            );
+            const exportData = books.map(book => {
+                const availability = availabilityById.get(String(book.id)) || 'available';
+                const {
+                    _availability: _ignoredAvailability,
+                    _reserved: _ignoredReserved,
+                    _delivered: _ignoredDelivered,
+                    reservedUntil: _ignoredReservedUntil,
+                    ...catalogFields
+                } = book;
+                const row = {
+                    ...catalogFields,
+                    'Stato Attuale': availability === 'delivered'
+                        ? 'CONSEGNATO'
+                        : availability === 'reserved'
+                            ? 'PRENOTATO'
+                            : 'DISPONIBILE',
+                };
+                return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, sanitizeSpreadsheetCell(value)]));
+            });
 
-        const exportData = books.map(book => {
-            const row = {
-                ...book,
-                'Stato Attuale': bookStatesMap.get(book.id) || (book._reserved ? 'NON DISPONIBILE' : 'DISPONIBILE')
-            };
-            return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, sanitizeSpreadsheetCell(value)]));
-        });
-
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Libri');
-        XLSX.writeFile(wb, 'scarto_librario_export.xlsx');
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Libri');
+            XLSX.writeFile(wb, 'scarto_librario_export.xlsx');
+            setImportFeedback(`Esportazione completata: ${exportData.length.toLocaleString('it-IT')} volumi con stato aggiornato.`);
+        } catch (error) {
+            console.error('Esportazione catalogo non riuscita.', error);
+            setImportFeedback('Esportazione non riuscita: impossibile acquisire lo stato aggiornato dei volumi. Riprova.');
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleResetClick = () => setResetModalOpen(true);

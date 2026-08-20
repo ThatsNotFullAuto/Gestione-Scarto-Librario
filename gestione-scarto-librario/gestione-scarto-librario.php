@@ -2,13 +2,17 @@
 /**
  * Plugin Name: Gestione Scarto Librario
  * Description: Sistema professionale per la gestione dello scarto librario con form utente, notifiche email e generazione PDF.
- * Version: 9.4.5
+ * Version: 9.4.6
  * Author: Biblioteca Stelio Crise
  * Requires at least: 6.6
  * Requires PHP: 8.2
  * Tested up to: 7.0
  * Text Domain: gestione-scarto-librario
  * Domain Path: /languages
+ *
+ * Version 9.4.6:
+ * - Fixed catalog Excel exports reporting delivered volumes as available
+ * - Exported a fresh global availability snapshot without internal state columns
  *
  * Version 9.4.5:
  * - Unified reservation PDF downloads and email attachments from one server-generated file
@@ -147,7 +151,7 @@ if (!defined('ABSPATH')) exit;
 // CONSTANTS
 // ============================================================================
 
-define('SCARTO_VERSION', '9.4.5');
+define('SCARTO_VERSION', '9.4.6');
 define('SCARTO_DB_VERSION', '8.15');
 define('SCARTO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SCARTO_PLUGIN_URL', plugin_dir_url(__FILE__));

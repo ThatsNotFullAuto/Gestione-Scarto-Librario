@@ -1,7 +1,7 @@
 <?php
 /**
  * Uninstall script for Gestione Scarto Librario
- * Version: 9.4.5
+ * Version: 9.4.6
  *
  * This file runs when the plugin is deleted through the WordPress admin.
  * Data is preserved unless an administrator explicitly enabled deletion.
