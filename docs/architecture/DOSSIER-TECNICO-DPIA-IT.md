@@ -4,7 +4,7 @@
 
 **Organizzazione:** Biblioteca statale Stelio Crise  
 **Applicazione:** Gestione Scarto Librario per WordPress  
-**Versione analizzata:** 9.4.4 candidata, schema database 8.15  
+**Versione analizzata:** 9.4.7 candidata, schema database 8.15  
 **Data del documento:** 20 agosto 2026  
 **Pagina del servizio:** <https://bibliotecacrise.cultura.gov.it/scarto-librario/>  
 **Informativa:** <https://bibliotecacrise.cultura.gov.it/informativa-privacy-scarto-librario/>
@@ -21,7 +21,7 @@ I principali rischi residui riguardano la sicurezza complessiva del sito WordPre
 
 ## 2. Ambito e metodo
 
-L'analisi comprende sorgenti PHP, React/TypeScript, schema REST, tabelle, ruoli, log, strumenti privacy, importazione Excel, backup e pacchetto candidato 9.4.4. Sono stati considerati anche controlli HTTP passivi sul sito pubblico, che al momento della verifica eseguiva una baseline precedente. Non sono stati eseguiti exploit, scansioni invasive, accessi autenticati di produzione, revisione del sistema operativo, del database gestito, del server SMTP, dei contratti con i fornitori o del codice di tema e plugin terzi.
+L'analisi comprende sorgenti PHP, React/TypeScript, schema REST, tabelle, ruoli, log, strumenti privacy, importazione Excel, backup e pacchetto candidato 9.4.7. Sono stati considerati anche controlli HTTP passivi sul sito pubblico, che al momento della verifica eseguiva una baseline precedente. Non sono stati eseguiti exploit, scansioni invasive, accessi autenticati di produzione, revisione del sistema operativo, del database gestito, del server SMTP, dei contratti con i fornitori o del codice di tema e plugin terzi.
 
 Evidenze automatiche disponibili alla data del documento:
 
@@ -198,7 +198,7 @@ Le operazioni critiche richiedono capability, nonce e password aggiuntiva. Quest
 ### 8.3 Crittografia e segreti
 
 - payload OTP cifrati AES-256-GCM con chiave derivata dai salt WordPress;
-- OTP, recovery token e token privacy conservati come hash;
+- OTP di prenotazione e token privacy conservati come hash; il recupero password proprietario non è più esposto dal runtime;
 - password del plugin conservata come bcrypt cost 12;
 - backup cifrati AES-256-GCM con chiave PBKDF2-HMAC-SHA256, salt e IV casuali;
 - password MySQL gestita esclusivamente da WordPress in `wp-config.php` e non letta/esposta dal plugin;
@@ -291,9 +291,9 @@ Non sono emerse vie anonime semplici verso dati personali o password del plugin.
 
 ## 14. Piano di miglioramento tecnico
 
-La candidata 9.4.4 aggiunge alla precedente hardening il ripristino sicuro delle prenotazioni in sede senza email e test offline eseguibili per backup cifrato e pacchetto deterministico. Le attivita residue richiedono un ambiente WordPress o decisioni del gestore:
+La candidata 9.4.7 completa la precedente hardening con bonifica incrementale dei log storici, export dell'interessato completo, rimozione del login proprietario inattivo e test ostili dell'import Excel. Le attivita residue richiedono un ambiente WordPress o decisioni del gestore:
 
-1. installare e collaudare la 9.4.4 su staging con la matrice dei ruoli;
+1. installare e collaudare la 9.4.7 su staging con la matrice dei ruoli;
 2. limitare enumerazione utenti e valutare XML-RPC con procedura antilockout;
 3. proteggere `wp-config.php`, disabilitare editor file e rimuovere `readme.html`;
 4. applicare WAF in monitoraggio, poi enforcement graduale;
@@ -311,6 +311,7 @@ La candidata 9.4.4 aggiunge alla precedente hardening il ripristino sicuro delle
 - **9.4.0-9.4.2:** strumenti completi per interessati, blacklist strutturata, backup cifrato, cleanup verificabile, regola email/domicilio per origine e correzione del payload OTP online.
 - **9.4.3:** hardening cache privata e capability privacy, lockout per account, backup legacy fail-closed e ZIP ripetibile con controllo artefatti sensibili.
 - **9.4.4:** ripristino delle prenotazioni in sede senza email, test offline della cifratura e verifica byte-per-byte del pacchetto e del manifesto interno.
+- **9.4.7:** bonifica privacy dei log, export IP/User-Agent completo, rimozione dell'autenticazione proprietaria inattiva, limite parser Excel e modulo di hardening sito separato e opt-in.
 
 Lo storico deriva dai commenti di versione e dai piani tecnici del repository; non sostituisce un registro formale delle modifiche firmato o un inventario Git completo.
 

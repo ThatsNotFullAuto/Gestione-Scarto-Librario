@@ -62,9 +62,9 @@ Questa guida aiuta il personale autorizzato a leggere il registro **Scarto Libra
 | `db_admin_auth_blocked` | Troppi tentativi di password di sicurezza dalla stessa origine. | Attenzione: attendere il termine del blocco e verificare possibili abusi. |
 | `privacy_db_auth_failed` | Password di sicurezza errata durante un'operazione privacy amministrativa. | Attenzione; verificare l'utente WP associato. |
 | `privacy_db_auth_blocked` | Operazioni privacy bloccate per troppi tentativi di password. | Attenzione; verificare immediatamente se non atteso. |
-| `credentials_rotated` | Le credenziali di sicurezza sono state modificate e le sessioni precedenti invalidate. `db_changed` indica se è cambiata la password database. | Attenzione: confermare che la modifica fosse autorizzata. |
-| `login_success`, `login_failed`, `logout` | Eventi del precedente sistema di accesso proprietario, mantenuti per compatibilità con installazioni pregresse. Il pannello corrente usa account e capability WordPress. | Da verificare se compaiono ancora frequentemente. |
-| `password_recovery_requested`, `password_reset_invalid_token`, `password_reset_success`, `password_changed` | Eventi del precedente recupero/cambio password interno, conservati per compatibilità. | Da verificare se compaiono nella configurazione attuale. |
+| `credentials_rotated` | La password aggiuntiva di sicurezza del plugin è stata modificata. `db_changed: true` indica l'avvenuta rotazione; non si tratta della password MySQL di WordPress. | Attenzione: confermare che la modifica fosse autorizzata. |
+| `login_success`, `login_failed`, `logout` | Eventi storici del sistema di accesso proprietario rimosso nella 9.4.7. Non possono essere generati dal runtime corrente. | Nessuna azione sui record storici; se compare un nuovo evento, verificare versione e integrità dei file installati. |
+| `password_recovery_requested`, `password_reset_invalid_token`, `password_reset_success`, `password_changed` | Eventi storici del recupero password proprietario rimosso nella 9.4.7. | Nessuna azione sui record storici; un evento nuovo richiede verifica tecnica. |
 
 ## Impostazioni e sistema
 
@@ -73,6 +73,8 @@ Questa guida aiuta il personale autorizzato a leggere il registro **Scarto Libra
 | `settings_updated` | Impostazioni operative, email, conservazione o anti-abuso modificate. `keys` elenca i campi salvati. | Normale se autorizzato; controllare modifiche inattese a limiti, whitelist o blacklist. |
 | `appearance_updated` | Aspetto, logo, colori o collegamenti pubblici modificati. `keys` elenca i campi. | Normale; verificare l'anteprima pubblica. |
 | `plugin_activated` | Plugin attivato. `version` indica la versione caricata. | Normale dopo installazione, aggiornamento o riattivazione manuale. |
+| `audit_privacy_migration_completed` | La bonifica incrementale dei dettagli dei log storici è terminata. `examined`, `updated` ed `errors` riportano i conteggi senza identificatori personali. | Normale dopo l'aggiornamento alla 9.4.7; verificare la diagnostica se `errors` è maggiore di zero. |
+| `audit_privacy_migration_retried` | Un autorizzato ha pianificato la ripresa della bonifica log dalla pagina Privacy e sicurezza. | Verificare l'utente WP e controllare poi lo stato in diagnostica. |
 
 ## Privacy e GDPR
 
@@ -103,7 +105,7 @@ Questa guida aiuta il personale autorizzato a leggere il registro **Scarto Libra
 | `page` | Pagina amministrativa caricata. |
 | `search` | `true` se era attivo un filtro di ricerca. |
 | `accepted` | Il trasporto email ha accettato il messaggio; non prova la consegna finale. |
-| `email_hash` | Impronta tecnica non reversibile usata per correlare eventi senza duplicare l'indirizzo nei dettagli. |
+| `email_hash` | Campo storico rimosso dalla 9.4.7. La bonifica automatica lo elimina dai dettagli mantenendo i dati operativi. |
 | `email_exempt` | Indica l'applicazione della whitelist per i limiti legati all'email. |
 | `remaining_attempts` | Tentativi OTP ancora disponibili. |
 | `error_code` | Codice tecnico dell'errore da comunicare all'assistenza. |

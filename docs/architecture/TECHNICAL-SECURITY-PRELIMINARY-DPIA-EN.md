@@ -4,7 +4,7 @@
 
 **Organisation:** Biblioteca statale Stelio Crise  
 **Application:** Gestione Scarto Librario for WordPress  
-**Version assessed:** 9.4.4 release candidate, database schema 8.15  
+**Version assessed:** 9.4.7 release candidate, database schema 8.15  
 **Document date:** 20 August 2026  
 **Service page:** <https://bibliotecacrise.cultura.gov.it/scarto-librario/>  
 **Privacy notice:** <https://bibliotecacrise.cultura.gov.it/informativa-privacy-scarto-librario/>
@@ -21,7 +21,7 @@ The principal residual risks concern the security of the whole WordPress site, p
 
 ## 2. Scope and method
 
-The assessment covers the PHP and React/TypeScript source, REST schemas, database tables, roles, logs, privacy tools, Excel import, backup functions and the 9.4.4 release candidate. Passive HTTP checks of the public site, which was running an earlier baseline at the time, were also considered. No exploit, invasive scan, authenticated production assessment, operating-system review, managed-database review, SMTP assessment, supplier-contract review, or complete audit of third-party themes and plugins was performed.
+The assessment covers the PHP and React/TypeScript source, REST schemas, database tables, roles, logs, privacy tools, Excel import, backup functions and the 9.4.7 release candidate. Passive HTTP checks of the public site, which was running an earlier baseline at the time, were also considered. No exploit, invasive scan, authenticated production assessment, operating-system review, managed-database review, SMTP assessment, supplier-contract review, or complete audit of third-party themes and plugins was performed.
 
 Evidence available on the document date:
 
@@ -198,7 +198,7 @@ Critical actions require a capability, nonce and additional password. Historical
 ### 8.3 Encryption and secrets
 
 - AES-256-GCM encryption for pending OTP payloads, keyed from WordPress salts;
-- OTPs, recovery tokens and privacy tokens stored as hashes;
+- reservation OTPs and privacy tokens stored as hashes; the proprietary password-recovery flow is no longer exposed by the runtime;
 - plugin password stored using bcrypt cost 12;
 - AES-256-GCM backups with PBKDF2-HMAC-SHA256 key derivation, random salt and IV;
 - the MySQL password remains solely in WordPress `wp-config.php` and is not read or returned by the plugin;
@@ -291,9 +291,9 @@ No straightforward anonymous path to personal data or plugin passwords was ident
 
 ## 14. Technical improvement plan
 
-Release candidate 9.4.4 adds safe restore of email-less in-person reservations and executable offline tests for encrypted backups and deterministic packaging. Remaining actions require a WordPress environment or operator decisions:
+Release candidate 9.4.7 adds incremental historical-log cleanup, complete data-subject exports, removal of inactive proprietary authentication and hostile Excel-input tests. Remaining actions require a WordPress environment or operator decisions:
 
-1. install and test 9.4.4 on staging with the full role matrix;
+1. install and test 9.4.7 on staging with the full role matrix;
 2. limit user enumeration and assess XML-RPC under the anti-lockout procedure;
 3. protect `wp-config.php`, disable the file editor and remove `readme.html`;
 4. introduce WAF monitoring before gradual enforcement;
@@ -311,6 +311,7 @@ Release candidate 9.4.4 adds safe restore of email-less in-person reservations a
 - **9.4.0-9.4.2:** comprehensive data-subject tools, structured blocklist, encrypted backup, observable cleanup, source-based email/address rule and corrected online OTP payload.
 - **9.4.3:** private-cache and privacy-capability hardening, per-account lockouts, fail-closed legacy backups and a reproducible ZIP with sensitive-artifact checks.
 - **9.4.4:** restore support for email-less in-person reservations, offline encryption tests and byte-for-byte ZIP and internal-manifest verification.
+- **9.4.7:** audit-log privacy cleanup, complete IP/User-Agent exports, removal of inactive proprietary authentication, bounded Excel parsing and a separate opt-in site-hardening module.
 
 This history is derived from source version notes and repository plans. It does not replace a signed change record or a complete Git history.
 

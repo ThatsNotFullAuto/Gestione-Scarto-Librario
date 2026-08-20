@@ -4,13 +4,16 @@
 
 - `architecture/DOSSIER-TECNICO-DPIA-IT.md`: dossier italiano per analisi tecnica, sicurezza e privacy.
 - `architecture/TECHNICAL-SECURITY-PRELIMINARY-DPIA-EN.md`: versione inglese.
-- I corrispondenti PDF 9.4.4 sono pronti per distribuzione controllata; i PDF precedenti restano come storico.
+- I dossier Markdown descrivono la candidata 9.4.7; i PDF 9.4.4 restano copie storiche e non sostituiscono i sorgenti aggiornati.
 
 ## Esercizio e aggiornamento
 
 - `CREARE-ZIP-INSTALLABILE.md`: procedura completa per build, ZIP, checksum e controllo del pacchetto.
-- `operations/UPGRADE-9.4.6.md`: aggiornamento e collaudo della release corrente.
-- `operations/RAPPORTO-VERIFICHE-OFFLINE-9.4.6.md`: evidenze automatiche e limiti delle prove locali.
+- `operations/UPGRADE-9.4.8.md`: aggiornamento, verifica PDF e rollback della release corrente.
+- `operations/RAPPORTO-VERIFICHE-OFFLINE-9.4.8.md`: test strutturali e multipagina del riepilogo PDF.
+- `operations/RAPPORTO-ESECUZIONE-AUDIT-9.4.7.md`: implementazione, evidenze locali e gate esterni ancora necessari.
+- `operations/PIANO-OPERATIVO-AUDIT-SICUREZZA-PRIVACY-9.4.6.md`: piano tecnico eseguito per la candidata 9.4.7.
+- `operations/README.md`: procedura per il modulo site-specific opt-in e antilockout.
 - `operations/HARDENING-SITO-ANTILOCKOUT-9.4.3.md`: hardening dell'hosting senza rischio di lockout.
 - `operations/RAPPORTO-ESECUZIONE-HARDENING-9.4.3.md`: misure implementate e verifiche.
 - `operations/DATI-PERSONALI-IP-USER-AGENT.md`: dati trattati e motivazioni operative.
