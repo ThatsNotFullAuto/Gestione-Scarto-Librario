@@ -9,8 +9,8 @@
 ## Esercizio e aggiornamento
 
 - `CREARE-ZIP-INSTALLABILE.md`: procedura completa per build, ZIP, checksum e controllo del pacchetto.
-- `operations/UPGRADE-9.4.5.md`: aggiornamento e collaudo della release corrente.
-- `operations/RAPPORTO-VERIFICHE-OFFLINE-9.4.5.md`: evidenze automatiche e limiti delle prove locali.
+- `operations/UPGRADE-9.4.6.md`: aggiornamento e collaudo della release corrente.
+- `operations/RAPPORTO-VERIFICHE-OFFLINE-9.4.6.md`: evidenze automatiche e limiti delle prove locali.
 - `operations/HARDENING-SITO-ANTILOCKOUT-9.4.3.md`: hardening dell'hosting senza rischio di lockout.
 - `operations/RAPPORTO-ESECUZIONE-HARDENING-9.4.3.md`: misure implementate e verifiche.
 - `operations/DATI-PERSONALI-IP-USER-AGENT.md`: dati trattati e motivazioni operative.
