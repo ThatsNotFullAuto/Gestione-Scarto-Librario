@@ -1,5 +1,21 @@
 # Changelog
 
+## 9.4.8 - 2026-08-20
+
+- Ripristinato lo stile strutturato del PDF di conferma prenotazione.
+- Mantenuti codice, dati richiedente, scadenza, titoli, autori, inventari, istruzioni e footer configurabile.
+- Uniformato il renderer server-side affinché download e allegato email siano identici su ogni hosting.
+- Aggiunto un test multipagina in memoria con 70 volumi e validazione della struttura PDF.
+
+## 9.4.7 - 2026-08-20
+
+- Rimossi fingerprint email e IP ridondanti dai nuovi dettagli dei log.
+- Aggiunta una bonifica storica incrementale, diagnostica e recuperabile senza modificare prenotazioni o catalogo.
+- Completati gli export dell'interessato con log, IP e User-Agent entro la retention.
+- Rimossi callback, sessioni e schemi del precedente login proprietario inattivo; account, capability e nonce WordPress restano invariati.
+- Aggiunti limite di parsing Excel, verifica SHA-256 del vendor e test di file ostili.
+- Aggiunto un modulo site-specific separato, opt-in e antilockout per REST utenti e XML-RPC; non è incluso nello ZIP principale.
+
 ## 9.4.6 - 2026-08-20
 
 - Corretto l'export Excel che indicava come disponibili i volumi già consegnati.
