@@ -686,10 +686,17 @@ add_action('admin_post_scarto_gdpr_delete_native', function() {
     $result = scarto_api_gdpr_delete_admin(scarto_admin_rest_request('/scarto/v1/gdpr/delete', $params));
     scarto_admin_die_rest_error($result);
     $data = $result instanceof WP_REST_Response ? $result->get_data() : [];
-    scarto_audit_log('privacy_subject_deletion_authorized', 'wordpress_user', (string) get_current_user_id(), ['reason' => $reason], [
-        'subject_email' => $subject['email'] ?: null,
-        'category' => 'privacy',
-    ]);
+    $operation_reference = scarto_sanitize_text($data['operation_reference'] ?? '', 36);
+    scarto_audit_log(
+        'privacy_subject_deletion_authorized',
+        $subject['code'] !== '' ? 'order' : 'privacy_operation',
+        $subject['code'] !== '' ? $subject['code'] : $operation_reference,
+        [
+            'reason' => $reason,
+            'scope' => $subject['code'] !== '' ? 'reservation_code' : 'email_without_identifier_retention',
+        ],
+        ['category' => 'privacy']
+    );
 
     wp_safe_redirect(add_query_arg([
         'page' => 'scarto-security',
@@ -864,7 +871,7 @@ function scarto_render_data_subject_page() {
                     <?php if ($subject_email): ?>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="background:#fff;border:1px solid #c3c4c7;padding:20px"><input type="hidden" name="action" value="scarto_subject_restrict"><?php wp_nonce_field('scarto_subject_restrict'); ?><input type="hidden" name="email" value="<?php echo esc_attr($subject_email); ?>"><h3>Limitazione temporanea</h3><p>Impedisce nuove prenotazioni e mantiene i dati già registrati per il solo periodo indicato.</p><p><label>Fino al<br><input type="date" name="until" required min="<?php echo esc_attr(wp_date('Y-m-d')); ?>"></label></p><p><label>Motivazione<br><input class="regular-text" name="reason" required minlength="10" maxlength="300"></label></p><p><label>Password sicurezza<br><input class="regular-text" type="password" name="password" required maxlength="72" autocomplete="current-password"></label></p><?php submit_button('Registra limitazione', 'secondary', 'submit', false); ?></form>
                     <?php endif; ?>
-                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="background:#fff;border:1px solid #d63638;padding:20px"><input type="hidden" name="action" value="scarto_gdpr_delete_native"><?php wp_nonce_field('scarto_gdpr_delete_native'); ?><input type="hidden" name="email" value="<?php echo esc_attr($subject_email); ?>"><input type="hidden" name="code" value="<?php echo esc_attr($subject_email ? '' : $subject_code); ?>"><h3>Cancella o anonimizza</h3><p>Le prenotazioni attive impediscono l’operazione.</p><p><label>Motivazione<br><input class="regular-text" name="reason" required minlength="10" maxlength="300"></label></p><p><label>Password sicurezza<br><input class="regular-text" type="password" name="password" required maxlength="72" autocomplete="current-password"></label></p><p><label>Scrivere ELIMINA<br><input class="regular-text" name="confirmation" required></label></p><?php submit_button('Elabora richiesta', 'delete', 'submit', false); ?></form>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="background:#fff;border:1px solid #d63638;padding:20px"><input type="hidden" name="action" value="scarto_gdpr_delete_native"><?php wp_nonce_field('scarto_gdpr_delete_native'); ?><input type="hidden" name="email" value="<?php echo esc_attr($subject_email); ?>"><input type="hidden" name="code" value="<?php echo esc_attr($subject_email ? '' : $subject_code); ?>"><h3>Cancella o anonimizza</h3><p>Le prenotazioni attive impediscono l’operazione.</p><p><label>Motivazione operativa<br><input class="regular-text" name="reason" required minlength="10" maxlength="300" aria-describedby="scarto-deletion-reason-help"></label><br><small id="scarto-deletion-reason-help">Descrivere richiesta e presupposto senza ripetere nome, email, domicilio o altri dati identificativi.</small></p><p><label>Password sicurezza<br><input class="regular-text" type="password" name="password" required maxlength="72" autocomplete="current-password"></label></p><p><label>Scrivere ELIMINA<br><input class="regular-text" name="confirmation" required></label></p><?php submit_button('Elabora richiesta', 'delete', 'submit', false); ?></form>
                 </div>
             <?php endif; ?>
         <?php endif; ?>

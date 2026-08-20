@@ -1,7 +1,7 @@
 <?php
 /**
  * Template isolato per Scarto Librario
- * Versione 9.4.4 - Frontend pubblico separato dal pannello WordPress
+ * Versione 9.4.5 - Frontend pubblico separato dal pannello WordPress
  *
  * v8.8.1 Changes:
  * - Enhanced privacy policy with GDPR-compliant sections

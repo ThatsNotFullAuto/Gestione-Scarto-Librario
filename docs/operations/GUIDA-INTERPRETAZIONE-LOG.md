@@ -83,7 +83,7 @@ Questa guida aiuta il personale autorizzato a leggere il registro **Scarto Libra
 | `gdpr_data_export_verified` | L'interessato verificato ha esportato i propri dati. `orders_count` indica le prenotazioni incluse. | Normale; evento rilevante ai fini privacy. |
 | `gdpr_data_deletion_verified` | Richiesta verificata di cancellazione eseguita. `anonymized` e `deleted` indicano i record trattati. | Normale se richiesta; conservare la tracciabilità prevista. |
 | `gdpr_data_export_admin` | Un autorizzato ha esportato dati personali dal pannello. | Attenzione: verificare finalità e utente WP. |
-| `gdpr_data_deletion_admin` | Un autorizzato ha cancellato o anonimizzato dati dal pannello. | Attenzione: operazione irreversibile; verificare autorizzazione. |
+| `gdpr_data_deletion_admin` | Un autorizzato ha cancellato o anonimizzato dati dal pannello. Per una richiesta basata sul codice, l’entità è la prenotazione; per una richiesta basata sull’email è usato un riferimento casuale non riconducibile all’indirizzo. `scope`, `anonymized`, `deleted` e `transient_cleanup` descrivono l’esecuzione. | Attenzione: operazione irreversibile; verificare autorizzazione, esito e utente WP. |
 | `gdpr_auto_cleanup` | Il processo pianificato ha eliminato/anonimizzato dati oltre i termini di conservazione. | Normale; controllare i conteggi se inattesi. |
 | `ip_anonymization` | Indirizzi IP più vecchi del periodo configurato sono stati anonimizzati. | Normale. |
 | `wp_privacy_eraser` | È stato usato lo strumento privacy nativo di WordPress. I dettagli indicano record anonimizzati, eliminati e dati temporanei rimossi. | Attenzione: verificare la richiesta WordPress associata. |
@@ -91,7 +91,7 @@ Questa guida aiuta il personale autorizzato a leggere il registro **Scarto Libra
 | `privacy_subject_export_downloaded` | È stato scaricato l’export completo di un interessato, inclusi i log tecnici correlati. | Attenzione: il file contiene dati personali; verificarne trasmissione e cancellazione. |
 | `privacy_subject_rectified` | Nome, cognome, email ed eventuale domicilio sono stati rettificati; le richieste temporanee precedenti sono state invalidate. | Normale se richiesto dall’interessato; controllare motivazione e autore. |
 | `privacy_subject_restricted` | È stata registrata una limitazione temporanea del trattamento fino alla data indicata. | Attenzione: riesaminare alla scadenza e non confonderla con la blacklist anti-abuso. |
-| `privacy_subject_deletion_authorized` | Un operatore ha autorizzato e motivato la cancellazione/anonimizzazione amministrativa. | Attenzione: correlare con l’esito `gdpr_data_deletion_admin`. |
+| `privacy_subject_deletion_authorized` | Un operatore ha autorizzato e motivato la cancellazione/anonimizzazione amministrativa. Dopo l’operazione non vengono reinseriti email o fingerprint: la correlazione usa il codice prenotazione oppure lo stesso riferimento casuale dell’operazione. | Attenzione: correlare con l’esito `gdpr_data_deletion_admin`, l’orario e l’utente WP. |
 
 ## Chiavi frequenti nei dettagli
 
@@ -99,6 +99,7 @@ Questa guida aiuta il personale autorizzato a leggere il registro **Scarto Libra
 |---|---|
 | `count`, `books`, `orders_count` | Numero di elementi interessati o restituiti. |
 | `inserted`, `updated`, `deleted`, `anonymized` | Quantità inserite, aggiornate, eliminate o anonimizzate. |
+| `scope` | Ambito dell’operazione privacy: `reservation_code` oppure `email_without_identifier_retention`. |
 | `page` | Pagina amministrativa caricata. |
 | `search` | `true` se era attivo un filtro di ricerca. |
 | `accepted` | Il trasporto email ha accettato il messaggio; non prova la consegna finale. |

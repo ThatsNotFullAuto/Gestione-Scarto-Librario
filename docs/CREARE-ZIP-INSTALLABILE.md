@@ -58,8 +58,8 @@ cd ..
 `npm run release` esegue nuovamente `npm run check` e crea nella radice:
 
 ```text
-gestione-scarto-librario-9.4.4.zip
-gestione-scarto-librario-9.4.4.zip.sha256
+gestione-scarto-librario-9.4.5.zip
+gestione-scarto-librario-9.4.5.zip.sha256
 ```
 
 Spostare entrambi in `releases/`. `node_modules/` serve solo localmente ed e ignorato da Git.
@@ -84,21 +84,21 @@ Linux o macOS:
 
 ```bash
 cd releases
-sha256sum -c gestione-scarto-librario-9.4.4.zip.sha256
+sha256sum -c gestione-scarto-librario-9.4.5.zip.sha256
 ```
 
 Windows PowerShell:
 
 ```powershell
-$expected = (Get-Content .\releases\gestione-scarto-librario-9.4.4.zip.sha256).Split()[0]
-$actual = (Get-FileHash .\releases\gestione-scarto-librario-9.4.4.zip -Algorithm SHA256).Hash.ToLower()
+$expected = (Get-Content .\releases\gestione-scarto-librario-9.4.5.zip.sha256).Split()[0]
+$actual = (Get-FileHash .\releases\gestione-scarto-librario-9.4.5.zip -Algorithm SHA256).Hash.ToLower()
 if ($actual -ne $expected) { throw "Checksum non valido" }
 ```
 
-Per la release candidata 9.4.4 il valore atteso e:
+Per la release candidata 9.4.5 il valore atteso è:
 
 ```text
-353f9cda20d369fc6a8d9188b7cb1d994e56b120cd7b8f0de49f21157e24001f
+67f07dc6b7bc2adb51a564026c9e3231b16c2aa31eeaf8fd04d04d3ec6d4212d
 ```
 
 Una modifica lecita ai file runtime produce un checksum diverso e richiede una nuova versione. Ricreare due volte lo ZIP senza modifiche deve invece produrre lo stesso hash.

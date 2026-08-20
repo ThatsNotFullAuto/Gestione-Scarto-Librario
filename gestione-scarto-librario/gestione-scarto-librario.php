@@ -2,13 +2,17 @@
 /**
  * Plugin Name: Gestione Scarto Librario
  * Description: Sistema professionale per la gestione dello scarto librario con form utente, notifiche email e generazione PDF.
- * Version: 9.4.4
+ * Version: 9.4.5
  * Author: Biblioteca Stelio Crise
  * Requires at least: 6.6
  * Requires PHP: 8.2
  * Tested up to: 7.0
  * Text Domain: gestione-scarto-librario
  * Domain Path: /languages
+ *
+ * Version 9.4.5:
+ * - Unified reservation PDF downloads and email attachments from one server-generated file
+ * - Aligned configurable PDF footers and strengthened anonymized GDPR audit evidence
  *
  * Version 9.4.4:
  * - Preserved valid in-person reservations without email during encrypted backup restore
@@ -143,7 +147,7 @@ if (!defined('ABSPATH')) exit;
 // CONSTANTS
 // ============================================================================
 
-define('SCARTO_VERSION', '9.4.4');
+define('SCARTO_VERSION', '9.4.5');
 define('SCARTO_DB_VERSION', '8.15');
 define('SCARTO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SCARTO_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -1494,6 +1498,15 @@ function scarto_cleanup_temp_files() {
             @unlink($file);
         }
     }
+    $directories = glob(trailingslashit(get_temp_dir()) . 'scarto-pdf-*', GLOB_ONLYDIR);
+    foreach ($directories ?: [] as $directory) {
+        if (is_dir($directory) && filemtime($directory) < time() - HOUR_IN_SECONDS) {
+            foreach (glob(trailingslashit($directory) . '*.pdf') ?: [] as $pdf_file) {
+                if (is_file($pdf_file)) @unlink($pdf_file);
+            }
+            @rmdir($directory);
+        }
+    }
 }
 
 function scarto_cleanup_reservation_verifications() {
@@ -2007,6 +2020,7 @@ function scarto_api_init($request) {
             'libraryName' => $settings['library_name'],
             'libraryAddress' => $settings['library_address'],
             'libraryPhone' => $settings['library_phone'] ?? '',
+            'libraryEmail' => $settings['email_from'] ?? '',
             'homepageUrl' => $settings['homepage_url'] ?? '',
             'privacyPolicyUrl' => $settings['privacy_policy_url'] ?? '',
             // Public reservations never collect domicile data.
@@ -3286,13 +3300,29 @@ function scarto_create_verified_reservation($payload, $staff_created = false) {
         }
     }
 
-    $emailSent = scarto_send_notification_email($code, $user, $enriched_details, $now);
+    $reservation_pdf = null;
+    $pdf_path = null;
+    if (!$staff_created && !empty($user['email']) && is_email($user['email'])) {
+        $pdf_path = scarto_generate_reservation_pdf(
+            $code,
+            $user,
+            $enriched_details,
+            $now,
+            max(1, min(30, (int) scarto_get_settings()['reservation_days']))
+        );
+    }
+    $emailSent = scarto_send_notification_email($code, $user, $enriched_details, $now, true, $pdf_path);
+    if ($pdf_path) {
+        $reservation_pdf = scarto_reservation_pdf_payload($pdf_path, $code);
+        scarto_delete_temp_reservation_pdf($pdf_path);
+    }
 
     return scarto_private_response([
         'success' => true,
         'code' => $code,
         'emailSent' => $emailSent,
         'booksReserved' => $inserted,
+        'reservationPdf' => $reservation_pdf,
     ]);
 }
 
@@ -3375,7 +3405,7 @@ function scarto_get_existing_reservation_response($request_id) {
     global $wpdb;
 
     $order = $wpdb->get_row($wpdb->prepare(
-        "SELECT code FROM {$wpdb->scarto_orders} WHERE request_id = %s LIMIT 1",
+        "SELECT * FROM {$wpdb->scarto_orders} WHERE request_id = %s LIMIT 1",
         $request_id
     ), ARRAY_A);
     if (!$order) {
@@ -3390,6 +3420,29 @@ function scarto_get_existing_reservation_response($request_id) {
         "SELECT COUNT(*) FROM {$wpdb->scarto_order_items} WHERE order_code = %s",
         $order['code']
     ));
+    $reservation_pdf = null;
+    if (!empty($order['user_email']) && is_email($order['user_email'])) {
+        $books = $wpdb->get_results($wpdb->prepare(
+            "SELECT book_id AS id, titolo, autore, inventario, scatola
+             FROM {$wpdb->scarto_order_items} WHERE order_code = %s ORDER BY id ASC",
+            $order['code']
+        ), ARRAY_A) ?: [];
+        $user = [
+            'nome' => $order['user_nome'],
+            'cognome' => $order['user_cognome'],
+            'email' => $order['user_email'],
+            'indirizzo' => $order['user_indirizzo'],
+        ];
+        $pdf_path = scarto_generate_reservation_pdf(
+            $order['code'],
+            $user,
+            $books,
+            (int) $order['created_at'],
+            max(1, min(30, (int) scarto_get_settings()['reservation_days']))
+        );
+        $reservation_pdf = scarto_reservation_pdf_payload($pdf_path, $order['code']);
+        scarto_delete_temp_reservation_pdf($pdf_path);
+    }
 
     return scarto_private_response([
         'success' => true,
@@ -3397,10 +3450,11 @@ function scarto_get_existing_reservation_response($request_id) {
         'emailSent' => null,
         'booksReserved' => $books_reserved,
         'idempotentReplay' => true,
+        'reservationPdf' => $reservation_pdf,
     ]);
 }
 
-function scarto_send_notification_email($code, $user, $books, $ts, $notify_staff = true) {
+function scarto_send_notification_email($code, $user, $books, $ts, $notify_staff = true, $provided_pdf_path = null) {
     $s = scarto_get_settings();
     $reservation_days = max(1, min(30, intval($s['reservation_days'])));
     $expiry_date = wp_date('d/m/Y', intval($ts/1000) + ($reservation_days * 86400));
@@ -3432,7 +3486,7 @@ function scarto_send_notification_email($code, $user, $books, $ts, $notify_staff
     $user_sent = false;
     if (!empty($user['email']) && is_email($user['email'])) {
         // Generate PDF for user
-        $pdf_path = scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation_days);
+        $pdf_path = $provided_pdf_path ?: scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation_days);
         
         $user_subject = "Conferma Prenotazione Scarto Librario - Codice: $code";
         $user_body = "Gentile {$user['nome']} {$user['cognome']},\n\n";
@@ -3483,12 +3537,56 @@ function scarto_send_notification_email($code, $user, $books, $ts, $notify_staff
         $user_sent = scarto_send_mail_with_status($user['email'], $user_subject, $user_body, $headers, $attachments, $notify_staff ? 'reservation_user' : 'reservation_resend');
         
         // Clean up PDF file after sending
-        if ($pdf_path && file_exists($pdf_path)) {
-            @unlink($pdf_path);
-        }
+        if (!$provided_pdf_path) scarto_delete_temp_reservation_pdf($pdf_path);
     }
     
     return $user_sent;
+}
+
+function scarto_create_temp_reservation_pdf_path($code) {
+    $temp_root = trailingslashit(get_temp_dir());
+    try {
+        $directory = $temp_root . 'scarto-pdf-' . bin2hex(random_bytes(12));
+    } catch (Throwable $error) {
+        error_log('Scarto: generatore casuale non disponibile per il PDF temporaneo.');
+        return null;
+    }
+    if (!wp_mkdir_p($directory)) return null;
+    @chmod($directory, 0700);
+    return trailingslashit($directory) . 'prenotazione_' . sanitize_file_name($code) . '.pdf';
+}
+
+function scarto_delete_temp_reservation_pdf($pdf_path) {
+    if (!$pdf_path || !is_string($pdf_path)) return;
+    $real_temp = realpath(get_temp_dir());
+    $directory = dirname($pdf_path);
+    $real_directory = realpath($directory);
+    if (!$real_temp || !$real_directory || strpos($real_directory, trailingslashit($real_temp) . 'scarto-pdf-') !== 0) return;
+    if (is_file($pdf_path)) @unlink($pdf_path);
+    @rmdir($directory);
+}
+
+function scarto_reservation_pdf_payload($pdf_path, $code) {
+    if (!$pdf_path || !is_file($pdf_path)) return null;
+    $size = filesize($pdf_path);
+    if ($size === false || $size > 2 * MB_IN_BYTES) return null;
+    $contents = file_get_contents($pdf_path);
+    if ($contents === false || strncmp($contents, '%PDF-', 5) !== 0) return null;
+    return [
+        'filename' => 'prenotazione_' . sanitize_file_name($code) . '.pdf',
+        'contentBase64' => base64_encode($contents),
+    ];
+}
+
+function scarto_reservation_pdf_footer($settings) {
+    $contacts = [];
+    if (!empty($settings['library_phone'])) $contacts[] = 'Tel. ' . $settings['library_phone'];
+    if (!empty($settings['email_from'])) $contacts[] = 'email: ' . $settings['email_from'];
+    return [
+        (string) ($settings['library_name'] ?? 'Biblioteca'),
+        (string) ($settings['library_address'] ?? ''),
+        implode(' - ', $contacts),
+    ];
 }
 
 /**
@@ -3496,13 +3594,11 @@ function scarto_send_notification_email($code, $user, $books, $ts, $notify_staff
  * Uses a robust pure-PHP PDF generation approach
  */
 function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation_days) {
-    $temp_base = wp_tempnam('scarto-reservation-' . bin2hex(random_bytes(8)));
-    if (!$temp_base) {
+    $pdf_path = scarto_create_temp_reservation_pdf_path($code);
+    if (!$pdf_path) {
         error_log('Scarto: impossibile creare il file temporaneo PDF.');
         return null;
     }
-    $pdf_path = $temp_base . '.pdf';
-    @unlink($temp_base);
     $s = scarto_get_settings();
     $expiry_date = wp_date('d/m/Y', intval($ts/1000) + ($reservation_days * 86400));
     $creation_date = wp_date('d/m/Y H:i', intval($ts/1000));
@@ -3511,6 +3607,7 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
     if (class_exists('TCPDF')) {
         $generated = scarto_generate_pdf_tcpdf($pdf_path, $code, $user, $books, $ts, $reservation_days, $s);
         if ($generated) @chmod($generated, 0600);
+        if (!$generated) scarto_delete_temp_reservation_pdf($pdf_path);
         return $generated;
     }
     
@@ -3518,6 +3615,7 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
     if (class_exists('FPDF')) {
         $generated = scarto_generate_pdf_fpdf($pdf_path, $code, $user, $books, $s, $creation_date, $expiry_date);
         if ($generated) @chmod($generated, 0600);
+        if (!$generated) scarto_delete_temp_reservation_pdf($pdf_path);
         return $generated;
     }
     
@@ -3552,7 +3650,7 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
         $titolo = isset($b['titolo']) ? scarto_substr($b['titolo'], 0, 45) : 'N/D';
         $autore = isset($b['autore']) ? scarto_substr($b['autore'], 0, 30) : 'N/D';
         $content_lines[] = $num . '. ' . $titolo;
-        $content_lines[] = '   Autore: ' . $autore;
+        $content_lines[] = '   Autore: ' . $autore . ' | Inv: ' . ($b['inventario'] ?? '-');
     }
     
     $content_lines[] = '';
@@ -3581,7 +3679,7 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
 
     // Keep every volume: the dependency-free fallback paginates instead of
     // silently truncating content when TCPDF/FPDF are unavailable.
-    $page_lines = array_chunk($content_lines, 50);
+    $page_lines = array_chunk($content_lines, 43);
     if (!$page_lines) $page_lines = [[]];
     $page_count = count($page_lines);
     $streams = [];
@@ -3593,8 +3691,11 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
             $stream .= "1 0 0 1 50 {$y} Tm\n({$line}) Tj\n";
             $y -= 14;
         }
+        $footer = array_map($safe_pdf_line, scarto_reservation_pdf_footer($s));
         $page_label = $safe_pdf_line('Pagina ' . ($page_index + 1) . ' di ' . $page_count);
-        $stream .= "/F1 9 Tf\n1 0 0 1 500 35 Tm\n({$page_label}) Tj\nET\n";
+        $stream .= "ET\n0.5 w\n50 70 m\n545 70 l\nS\nBT\n/F2 8 Tf\n1 0 0 1 50 56 Tm\n({$footer[0]}) Tj\n";
+        $stream .= "/F1 8 Tf\n1 0 0 1 50 44 Tm\n({$footer[1]}) Tj\n1 0 0 1 50 32 Tm\n({$footer[2]}) Tj\n";
+        $stream .= "/F1 8 Tf\n1 0 0 1 500 18 Tm\n({$page_label}) Tj\nET\n";
         $streams[] = $stream;
     }
 
@@ -3614,18 +3715,20 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
     $append_object(1, '<< /Type /Catalog /Pages 2 0 R >>');
     $append_object(2, '<< /Type /Pages /Kids [' . implode(' ', $page_refs) . '] /Count ' . $page_count . ' >>');
     $append_object(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    $bold_font_object = 4 + ($page_count * 2);
     foreach ($streams as $page_index => $stream) {
         $page_object = 4 + ($page_index * 2);
         $content_object = $page_object + 1;
         $append_object(
             $page_object,
-            '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ' . $content_object . ' 0 R /Resources << /Font << /F1 3 0 R >> >> >>'
+            '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ' . $content_object . ' 0 R /Resources << /Font << /F1 3 0 R /F2 ' . $bold_font_object . ' 0 R >> >> >>'
         );
         $append_object(
             $content_object,
             "<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "endstream"
         );
     }
+    $append_object($bold_font_object, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
 
     $xref_offset = strlen($pdf);
     $object_count = max(array_keys($obj_offsets));
@@ -3641,6 +3744,7 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
     
     if ($written === false) {
         error_log('Scarto: Failed to write PDF to ' . $pdf_path);
+        scarto_delete_temp_reservation_pdf($pdf_path);
         return null;
     }
     @chmod($pdf_path, 0600);
@@ -3695,7 +3799,7 @@ function scarto_generate_pdf_tcpdf($pdf_path, $code, $user, $books, $ts, $reserv
     $pdf->SetAuthor($s['library_name']);
     $pdf->SetTitle('Prenotazione ' . $code);
     $pdf->SetMargins(20, 20, 20);
-    $pdf->SetAutoPageBreak(true, 20);
+    $pdf->SetAutoPageBreak(true, 32);
     $pdf->AddPage();
     
     // Title
@@ -3751,6 +3855,23 @@ function scarto_generate_pdf_tcpdf($pdf_path, $code, $user, $books, $ts, $reserv
     $pdf->Cell(0, 6, '1. Presentarsi presso ' . $s['library_name'], 0, 1);
     $pdf->Cell(0, 6, '2. Mostrare questo codice al personale', 0, 1);
     $pdf->Cell(0, 6, '3. Ritirare i libri entro ' . $expiry_date, 0, 1);
+
+    $footer = scarto_reservation_pdf_footer($s);
+    $page_count = $pdf->getNumPages();
+    for ($page = 1; $page <= $page_count; $page++) {
+        $pdf->setPage($page);
+        $pdf->SetY(-25);
+        $pdf->SetDrawColor(120, 120, 120);
+        $pdf->Line(20, $pdf->GetY(), 190, $pdf->GetY());
+        $pdf->Ln(2);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->SetFont('helvetica', 'B', 8);
+        $pdf->Cell(0, 4, $footer[0], 0, 1, 'C');
+        $pdf->SetFont('helvetica', '', 8);
+        if ($footer[1] !== '') $pdf->Cell(0, 4, $footer[1], 0, 1, 'C');
+        if ($footer[2] !== '') $pdf->Cell(0, 4, $footer[2], 0, 1, 'C');
+        $pdf->SetTextColor(0, 0, 0);
+    }
     
     $pdf->Output($pdf_path, 'F');
     
@@ -3762,6 +3883,7 @@ function scarto_generate_pdf_tcpdf($pdf_path, $code, $user, $books, $ts, $reserv
  */
 function scarto_generate_pdf_fpdf($pdf_path, $code, $user, $books, $s, $creation_date, $expiry_date) {
     $pdf = new FPDF('P', 'mm', 'A4');
+    $pdf->SetAutoPageBreak(true, 32);
     $pdf->AddPage();
     $pdf->SetFont('Helvetica', 'B', 18);
     $pdf->Cell(0, 10, 'Riepilogo Prenotazione Scarto Librario', 0, 1, 'C');
@@ -3804,6 +3926,24 @@ function scarto_generate_pdf_fpdf($pdf_path, $code, $user, $books, $s, $creation
     $pdf->Cell(0, 7, 'ISTRUZIONI', 0, 1);
     $pdf->SetFont('Helvetica', '', 10);
     $pdf->Cell(0, 6, 'Presentare questo documento per il ritiro presso ' . $s['library_name'], 0, 1);
+
+    $footer = scarto_reservation_pdf_footer($s);
+    $page_count = $pdf->PageNo();
+    $first_footer_page = method_exists($pdf, 'setPage') ? 1 : $page_count;
+    for ($page = $first_footer_page; $page <= $page_count; $page++) {
+        if (method_exists($pdf, 'setPage')) $pdf->setPage($page);
+        $pdf->SetY(-25);
+        $pdf->SetDrawColor(120, 120, 120);
+        $pdf->Line(20, $pdf->GetY(), 190, $pdf->GetY());
+        $pdf->Ln(2);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->Cell(0, 4, iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $footer[0]), 0, 1, 'C');
+        $pdf->SetFont('Helvetica', '', 8);
+        if ($footer[1] !== '') $pdf->Cell(0, 4, iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $footer[1]), 0, 1, 'C');
+        if ($footer[2] !== '') $pdf->Cell(0, 4, iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $footer[2]), 0, 1, 'C');
+        $pdf->SetTextColor(0, 0, 0);
+    }
     
     $pdf->Output('F', $pdf_path);
     
@@ -4789,6 +4929,7 @@ function scarto_api_gdpr_delete_admin($request) {
     $email = isset($p['email']) ? sanitize_email($p['email']) : '';
     $code = isset($p['code']) ? scarto_sanitize_text($p['code'], 10) : '';
     $confirm = !empty($p['confirm']);
+    $operation_reference = wp_generate_uuid4();
 
     if (empty($email) && empty($code)) {
         return new WP_Error('bad_request', 'Fornire email o codice prenotazione', ['status' => 400]);
@@ -4854,13 +4995,17 @@ function scarto_api_gdpr_delete_admin($request) {
     }
     $wpdb->query('COMMIT');
 
-    scarto_audit_log('gdpr_data_deletion_admin', null, null, [
-        'email_hash' => $email ? scarto_email_fingerprint($email) : null,
-        'code_scoped' => !$email && $code !== '',
+    scarto_audit_log(
+        'gdpr_data_deletion_admin',
+        $code !== '' ? 'order' : 'privacy_operation',
+        $code !== '' ? $code : $operation_reference,
+        [
+        'scope' => $code !== '' ? 'reservation_code' : 'email_without_identifier_retention',
         'anonymized' => $anonymized,
         'deleted' => $deleted,
         'transient_cleanup' => $transient_cleanup,
-    ]);
+        ]
+    );
 
     return rest_ensure_response([
         'success' => true,
@@ -4869,6 +5014,7 @@ function scarto_api_gdpr_delete_admin($request) {
         'orders_deleted' => (int) $deleted,
         'transient_data_deleted' => scarto_transient_cleanup_count($transient_cleanup),
         'reservation_restriction_retained' => (bool) ($subject_email && scarto_get_email_blocklist_entry($subject_email)),
+        'operation_reference' => $operation_reference,
     ]);
 }
 

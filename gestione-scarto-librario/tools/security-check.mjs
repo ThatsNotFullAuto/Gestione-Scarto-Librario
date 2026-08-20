@@ -361,14 +361,13 @@ const phpReservationPdfFunction = mainPhp.slice(
   mainPhp.indexOf('function scarto_generate_reservation_pdf'),
   mainPhp.indexOf('function scarto_generate_pdf_content')
 );
-if (!/array_chunk\(\$content_lines, 50\)/.test(phpReservationPdfFunction)
+if (!/array_chunk\(\$content_lines, (?:[1-4]?\d|50)\)/.test(phpReservationPdfFunction)
     || !/\/Type \/Pages \/Kids/.test(phpReservationPdfFunction)
     || !/Pagina .* di /.test(phpReservationPdfFunction)
     || /if \(\$y < 50\) break/.test(phpReservationPdfFunction)) {
   failed = true;
   console.error('FAIL Il fallback PDF PHP puo troncare le prenotazioni con molti volumi.');
 }
-
 const reserveLimitFunction = mainPhp.slice(
   mainPhp.indexOf('function scarto_api_reserve'),
   mainPhp.indexOf('function scarto_api_confirm_reservation')
@@ -377,6 +376,28 @@ const createReservationFunction = mainPhp.slice(
   mainPhp.indexOf('function scarto_create_verified_reservation'),
   mainPhp.indexOf('function scarto_get_existing_reservation_response')
 );
+if (!/scarto_reservation_pdf_payload\(\$pdf_path, \$code\)/.test(createReservationFunction)
+    || !/scarto_send_notification_email\(\$code, \$user, \$enriched_details, \$now, true, \$pdf_path\)/.test(createReservationFunction)
+    || !/downloadReservationPdfPayload\(reservationPdf\)/.test(frontend)
+    || !/'prenotazione_' \. sanitize_file_name\(\$code\) \. '\.pdf'/.test(mainPhp)) {
+  failed = true;
+  console.error('FAIL Allegato email e download pubblico non condividono lo stesso PDF server-side.');
+}
+const gdprDeleteFunction = mainPhp.slice(
+  mainPhp.indexOf('function scarto_api_gdpr_delete_admin'),
+  mainPhp.indexOf("add_filter('wp_privacy_personal_data_exporters'")
+);
+const nativeDeletionHandler = adminPhp.slice(
+  adminPhp.indexOf("add_action('admin_post_scarto_gdpr_delete_native'"),
+  adminPhp.indexOf("add_action('admin_post_scarto_subject_rectify'")
+);
+if (/gdpr_data_deletion_admin[\s\S]+?email_hash/.test(gdprDeleteFunction)
+    || !/email_without_identifier_retention/.test(gdprDeleteFunction)
+    || !/operation_reference/.test(gdprDeleteFunction)
+    || /privacy_subject_deletion_authorized[\s\S]+?subject_email/.test(nativeDeletionHandler)) {
+  failed = true;
+  console.error('FAIL L’audit successivo alla cancellazione puo reintrodurre un identificatore personale.');
+}
 if (!/scarto_is_email_rate_limit_exempt/.test(mainPhp)
     || !/rate_limit_email_exemptions/.test(mainPhp)
     || !/\$email_allowed = \$email_exempt\s*\|\|/.test(reserveLimitFunction)

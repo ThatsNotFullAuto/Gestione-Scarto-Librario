@@ -1,6 +1,6 @@
 /**
  * Gestione Scarto Librario - Frontend React
- * Version: 9.4.4
+ * Version: 9.4.5
  *
  * v8.8.0 Changes:
  * - Added privacy policy link display on public page
@@ -274,10 +274,16 @@ interface AppSettings {
     libraryName: string;
     libraryAddress: string;
     libraryPhone: string;
+    libraryEmail: string;
     homepageUrl: string;
     privacyPolicyUrl: string;
     collectDomicile: boolean;
     appearance: AppearanceSettings;
+}
+
+interface ReservationPdfPayload {
+    filename: string;
+    contentBase64: string;
 }
 
 interface AppearanceSettings {
@@ -459,7 +465,7 @@ const validateEmail = (email: string): boolean => {
 const generateReservationPDF = async (
     reservation: Reservation,
     books: Book[],
-    library: Pick<AppSettings, 'libraryName' | 'libraryAddress' | 'libraryPhone'>,
+    library: Pick<AppSettings, 'libraryName' | 'libraryAddress' | 'libraryPhone' | 'libraryEmail'>,
 ) => {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF();
@@ -615,7 +621,11 @@ const generateReservationPDF = async (
         doc.text(library.libraryName || 'Biblioteca', pageWidth / 2, 277, { align: 'center', maxWidth: pageWidth - (margin * 2) });
         doc.setFont('helvetica', 'normal');
         if (library.libraryAddress) doc.text(library.libraryAddress, pageWidth / 2, 282, { align: 'center', maxWidth: pageWidth - (margin * 2) });
-        if (library.libraryPhone) doc.text(`Tel. ${library.libraryPhone}`, pageWidth / 2, 287, { align: 'center', maxWidth: pageWidth - (margin * 2) });
+        const contacts = [
+            library.libraryPhone ? `Tel. ${library.libraryPhone}` : '',
+            library.libraryEmail ? `email: ${library.libraryEmail}` : '',
+        ].filter(Boolean).join(' - ');
+        if (contacts) doc.text(contacts, pageWidth / 2, 287, { align: 'center', maxWidth: pageWidth - (margin * 2) });
     }
 
     // Scarica il PDF
@@ -748,7 +758,7 @@ const api = {
             userData: onlineUserData,
             consent: {
                 accepted: true,
-                privacyVersion: '9.4.4'
+                privacyVersion: '9.4.5'
             }
         };
 
@@ -845,7 +855,7 @@ const adminApi = IS_WP_ADMIN ? {
             body: JSON.stringify({
                 booksDetails: books.map(book => ({ id: book.id })),
                 userData,
-                consent: { accepted: true, privacyVersion: '9.4.4' }
+                consent: { accepted: true, privacyVersion: '9.4.5' }
             })
         });
         const data = await res.json().catch(() => ({}));
@@ -2020,7 +2030,7 @@ interface ReservationsTableProps {
     loading: boolean;
     styles: ReturnType<typeof getFontStyles>;
     headerHeight: number;
-    library: Pick<AppSettings, 'libraryName' | 'libraryAddress' | 'libraryPhone'>;
+    library: Pick<AppSettings, 'libraryName' | 'libraryAddress' | 'libraryPhone' | 'libraryEmail'>;
     pagination: StaffPagination;
     onPageChange: (page: number) => void;
 }
@@ -3183,13 +3193,16 @@ interface SuccessModalProps {
     reservedBooks: Book[];
     userData: Omit<UserData, 'emailConfirm'> | null;
     reservationDays: number;
+    reservationPdf: ReservationPdfPayload | null;
+    library: Pick<AppSettings, 'libraryName' | 'libraryAddress' | 'libraryPhone' | 'libraryEmail'>;
 }
 
 const generateUserReservationPDF = async (
     code: string,
     books: Book[],
     userData: Omit<UserData, 'emailConfirm'> | null,
-    reservationDays: number
+    reservationDays: number,
+    library: Pick<AppSettings, 'libraryName' | 'libraryAddress' | 'libraryPhone' | 'libraryEmail'>
 ) => {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF();
@@ -3294,7 +3307,7 @@ const generateUserReservationPDF = async (
     doc.text('ISTRUZIONI PER IL RITIRO', margin, y);
     y += 7;
     doc.setFont('helvetica', 'normal');
-    doc.text('1. Presentarsi presso la Biblioteca Statale Stelio Crise', margin, y);
+    doc.text(`1. Presentarsi presso ${library.libraryName || 'la biblioteca'}`, margin, y);
     y += 5;
     doc.text('2. Mostrare questo codice al personale', margin, y);
     y += 5;
@@ -3310,17 +3323,37 @@ const generateUserReservationPDF = async (
         doc.setLineWidth(0.2);
         doc.line(margin, 272, pageWidth - margin, 272);
         doc.setFont('helvetica', 'bold');
-        doc.text('Biblioteca Statale Stelio Crise', pageWidth / 2, 277, { align: 'center' });
+        doc.text(library.libraryName || 'Biblioteca', pageWidth / 2, 277, { align: 'center', maxWidth: pageWidth - (margin * 2) });
         doc.setFont('helvetica', 'normal');
-        doc.text('Largo Papa Giovanni XXIII, 6 - 34123 Trieste', pageWidth / 2, 282, { align: 'center' });
-        doc.text('Tel. 040 300725 / 040 307463 - email: bs-scts@cultura.gov.it', pageWidth / 2, 287, { align: 'center' });
+        if (library.libraryAddress) doc.text(library.libraryAddress, pageWidth / 2, 282, { align: 'center', maxWidth: pageWidth - (margin * 2) });
+        const contacts = [
+            library.libraryPhone ? `Tel. ${library.libraryPhone}` : '',
+            library.libraryEmail ? `email: ${library.libraryEmail}` : '',
+        ].filter(Boolean).join(' - ');
+        if (contacts) doc.text(contacts, pageWidth / 2, 287, { align: 'center', maxWidth: pageWidth - (margin * 2) });
     }
 
     doc.save(`prenotazione_${code}.pdf`);
 };
 
+const downloadReservationPdfPayload = (payload: ReservationPdfPayload) => {
+    const binary = window.atob(payload.contentBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+    }
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = payload.filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+};
+
 const SuccessModal: React.FC<SuccessModalProps> = ({ 
-    lastReservationCode, setLastReservationCode, styles, reservedBooks, userData, reservationDays 
+    lastReservationCode, setLastReservationCode, styles, reservedBooks, userData, reservationDays, reservationPdf, library
 }) => {
     const modalRef = useRef<HTMLDivElement>(null);
     const handleClose = useCallback(() => setLastReservationCode(null), [setLastReservationCode]);
@@ -3329,7 +3362,11 @@ const SuccessModal: React.FC<SuccessModalProps> = ({
     useFocusTrap(modalRef, true);
 
     const handlePrintPDF = () => {
-        void generateUserReservationPDF(lastReservationCode, reservedBooks, userData, reservationDays);
+        if (reservationPdf) {
+            downloadReservationPdfPayload(reservationPdf);
+            return;
+        }
+        void generateUserReservationPDF(lastReservationCode, reservedBooks, userData, reservationDays, library);
     };
 
     return (
@@ -3412,6 +3449,7 @@ const App: React.FC = () => {
         libraryName: 'Biblioteca Statale Stelio Crise',
         libraryAddress: '',
         libraryPhone: '',
+        libraryEmail: '',
         homepageUrl: '',
         privacyPolicyUrl: '',
         collectDomicile: false,
@@ -3425,6 +3463,7 @@ const App: React.FC = () => {
     const [lastReservationCode, setLastReservationCode] = useState<string | null>(null);
     const [lastReservationBooks, setLastReservationBooks] = useState<Book[]>([]);
     const [lastReservationUserData, setLastReservationUserData] = useState<Omit<UserData, 'emailConfirm'> | null>(null);
+    const [lastReservationPdf, setLastReservationPdf] = useState<ReservationPdfPayload | null>(null);
 
     const [staffSearch, setStaffSearch] = useState('');
     const [staffSearchQuery, setStaffSearchQuery] = useState('');
@@ -3465,6 +3504,7 @@ const App: React.FC = () => {
                     libraryName: data.settings.libraryName || 'Biblioteca Statale Stelio Crise',
                     libraryAddress: data.settings.libraryAddress || '',
                     libraryPhone: data.settings.libraryPhone || '',
+                    libraryEmail: data.settings.libraryEmail || '',
                     homepageUrl: data.settings.homepageUrl || '',
                     privacyPolicyUrl: data.settings.privacyPolicyUrl || '',
                     collectDomicile: false,
@@ -3694,6 +3734,7 @@ const App: React.FC = () => {
         await loadData();
         setCart([]);
         setLastReservationCode(null);
+        setLastReservationPdf(null);
     };
 
     const requestReservationVerification = async (userData: Omit<UserData, 'emailConfirm'>) => {
@@ -3713,6 +3754,7 @@ const App: React.FC = () => {
         availabilityRequestSequenceRef.current += 1;
         setLastReservationBooks(confirmedBooks);
         setLastReservationUserData(userData);
+        setLastReservationPdf(result.reservationPdf || null);
         setBooks(current => current.map(book => confirmedBookIds.has(book.id) ? {
             ...book,
             _availability: 'reserved',
@@ -4023,6 +4065,8 @@ const App: React.FC = () => {
                     reservedBooks={lastReservationBooks}
                     userData={lastReservationUserData}
                     reservationDays={appSettings.reservationDays}
+                    reservationPdf={lastReservationPdf}
+                    library={appSettings}
                 />
             )}
         </div>
