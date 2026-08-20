@@ -26,7 +26,6 @@ function scarto_admin_capabilities() {
 }
 
 function scarto_install_admin_capabilities() {
-    $previous_capabilities_version = get_option('scarto_admin_capabilities_version');
     $roles = [
         'scarto_librario_operator' => [
             'label' => 'Operatore Scarto Librario',
@@ -59,9 +58,6 @@ function scarto_install_admin_capabilities() {
         foreach (scarto_admin_capabilities() as $capability) {
             $administrator->add_cap($capability);
         }
-    }
-    if ($previous_capabilities_version !== SCARTO_CAPABILITIES_VERSION && function_exists('scarto_invalidate_all_staff_sessions')) {
-        scarto_invalidate_all_staff_sessions();
     }
     update_option('scarto_admin_capabilities_version', SCARTO_CAPABILITIES_VERSION, false);
 }

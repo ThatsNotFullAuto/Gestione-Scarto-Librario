@@ -1,6 +1,6 @@
 /**
  * Gestione Scarto Librario - Frontend React
- * Version: 9.4.6
+ * Version: 9.4.8
  *
  * v8.8.0 Changes:
  * - Added privacy policy link display on public page
@@ -108,7 +108,8 @@ const stableRowHash = (value: string): string => {
 
 const prepareCatalogFile = async (file: File): Promise<PreparedImport> => {
     const XLSX = await import('xlsx');
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    // Read at most one row beyond the supported limit so oversized sheets fail predictably.
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', sheetRows: 50001 });
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName || !workbook.Sheets[firstSheetName]) {
         throw new Error('Il file non contiene alcun foglio leggibile.');
@@ -758,7 +759,7 @@ const api = {
             userData: onlineUserData,
             consent: {
                 accepted: true,
-                privacyVersion: '9.4.6'
+                privacyVersion: '9.4.8'
             }
         };
 
@@ -855,7 +856,7 @@ const adminApi = IS_WP_ADMIN ? {
             body: JSON.stringify({
                 booksDetails: books.map(book => ({ id: book.id })),
                 userData,
-                consent: { accepted: true, privacyVersion: '9.4.6' }
+                consent: { accepted: true, privacyVersion: '9.4.8' }
             })
         });
         const data = await res.json().catch(() => ({}));

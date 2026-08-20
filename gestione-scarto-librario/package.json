@@ -1,6 +1,6 @@
 {
   "name": "gestione-scarto-librario-wp",
-  "version": "9.4.6",
+  "version": "9.4.8",
   "releaseDate": "2026-08-20T00:00:00.000Z",
   "description": "Plugin WordPress per la gestione dello scarto librario con form utente, notifiche email e generazione PDF",
   "private": true,
@@ -17,8 +17,11 @@
     "test:security:concurrency": "node security-tests/concurrency-test.mjs",
     "test:security:active-limit": "node security-tests/active-limit-test.mjs",
     "test:offline:backup": "php tests/offline-backup-test.php",
+    "test:offline:audit-privacy": "php tests/offline-audit-privacy-test.php",
+    "test:offline:reservation-pdf": "php tests/offline-reservation-pdf-test.php",
+    "test:excel": "node tools/excel-security-test.mjs",
     "test:offline:release": "node tools/verify-release.mjs",
-    "check": "npm run check:php && npm run check:security && npm run test:offline:backup && npm run type-check && npm audit && npm run build",
+    "check": "npm run check:php && npm run check:security && npm run test:offline:backup && npm run test:offline:audit-privacy && npm run test:offline:reservation-pdf && npm run test:excel && npm run type-check && npm audit && npm run build",
     "release": "npm run check && node tools/build-release.mjs && npm run test:offline:release"
   },
   "dependencies": {

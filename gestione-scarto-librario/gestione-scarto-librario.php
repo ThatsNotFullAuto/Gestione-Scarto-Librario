@@ -2,13 +2,22 @@
 /**
  * Plugin Name: Gestione Scarto Librario
  * Description: Sistema professionale per la gestione dello scarto librario con form utente, notifiche email e generazione PDF.
- * Version: 9.4.6
+ * Version: 9.4.8
  * Author: Biblioteca Stelio Crise
  * Requires at least: 6.6
  * Requires PHP: 8.2
  * Tested up to: 7.0
  * Text Domain: gestione-scarto-librario
  * Domain Path: /languages
+ *
+ * Version 9.4.8:
+ * - Restored the structured reservation PDF style for both downloads and email attachments
+ * - Preserved complete reservation, volume, instruction and configurable footer information
+ *
+ * Version 9.4.7:
+ * - Removed redundant email fingerprints from audit details and added resumable historical cleanup
+ * - Completed data-subject audit exports and removed inactive proprietary staff authentication code
+ * - Added migration diagnostics without changing roles, capabilities, reservations or catalog data
  *
  * Version 9.4.6:
  * - Fixed catalog Excel exports reporting delivered volumes as available
@@ -151,8 +160,9 @@ if (!defined('ABSPATH')) exit;
 // CONSTANTS
 // ============================================================================
 
-define('SCARTO_VERSION', '9.4.6');
+define('SCARTO_VERSION', '9.4.8');
 define('SCARTO_DB_VERSION', '8.15');
+define('SCARTO_AUDIT_PRIVACY_MIGRATION_VERSION', '1');
 define('SCARTO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SCARTO_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -174,7 +184,6 @@ define('SCARTO_DEFAULT_LOGIN_LOCKOUT_MINUTES', 15);
 define('SCARTO_DEFAULT_MAX_RESERVATIONS_PER_DAY', 1);
 define('SCARTO_DEFAULT_MAX_RESERVATIONS_PER_EMAIL', 2);
 define('SCARTO_DEFAULT_MAX_ACTIVE_RESERVATIONS_PER_EMAIL', 2);
-define('SCARTO_DEFAULT_RECOVERY_COOLDOWN_MINUTES', 5);
 define('SCARTO_RESERVATION_VERIFICATION_EXPIRY_MINUTES', 15);
 define('SCARTO_RESERVATION_VERIFICATION_MAX_ATTEMPTS', 5);
 
@@ -210,6 +219,7 @@ $wpdb->scarto_rate_limits = $wpdb->prefix . 'scarto_rate_limits';
 $wpdb->scarto_reservation_verifications = $wpdb->prefix . 'scarto_reservation_verifications';
 
 require_once SCARTO_PLUGIN_DIR . 'includes/security.php';
+require_once SCARTO_PLUGIN_DIR . 'includes/audit-privacy.php';
 require_once SCARTO_PLUGIN_DIR . 'includes/rest-schema.php';
 require_once SCARTO_PLUGIN_DIR . 'includes/diagnostics.php';
 require_once SCARTO_PLUGIN_DIR . 'includes/admin.php';
@@ -596,10 +606,6 @@ function scarto_activate() {
     dbDelta($sql_rate_limits);
     dbDelta($sql_reservation_verifications);
     
-    if (!get_option('scarto_auth_generation')) {
-        add_option('scarto_auth_generation', 1, '', false);
-    }
-    
     if (!get_option('scarto_db_admin_password_hash')) {
         $hash = password_hash(wp_generate_password(64, true, true), PASSWORD_BCRYPT, ['cost' => 12]);
         update_option('scarto_db_admin_password_hash', $hash);
@@ -648,6 +654,7 @@ function scarto_activate() {
     if (!wp_next_scheduled('scarto_cleanup_temp_files')) {
         wp_schedule_event(time(), 'hourly', 'scarto_cleanup_temp_files');
     }
+    scarto_schedule_audit_privacy_migration();
 }
 
 register_deactivation_hook(__FILE__, 'scarto_deactivate');
@@ -658,6 +665,7 @@ function scarto_deactivate() {
     wp_clear_scheduled_hook('scarto_anonymize_old_ips');
     wp_clear_scheduled_hook('scarto_rate_limit_cleanup');
     wp_clear_scheduled_hook('scarto_cleanup_temp_files');
+    wp_clear_scheduled_hook('scarto_audit_privacy_cleanup');
 }
 
 // ============================================================================
@@ -678,12 +686,15 @@ function scarto_render_security_page() {
     <div class="wrap">
             <h1>Privacy e sicurezza Scarto Librario</h1>
         <p>L'accesso personale usa gli account WordPress. Qui puoi impostare o ruotare la password aggiuntiva richiesta per importazione, reset e operazioni distruttive. Non è la password MySQL configurata in <code>wp-config.php</code>.</p>
-        <p><a href="<?php echo esc_url(admin_url('profile.php')); ?>">Gestisci password e secondo fattore dell'account WordPress</a></p>
+        <p><a href="<?php echo esc_url(admin_url('profile.php')); ?>">Gestisci la password dell'account WordPress</a></p>
         <?php if (!empty($_GET['updated'])): ?>
-            <div class="notice notice-success"><p>Credenziali aggiornate e sessioni precedenti invalidate.</p></div>
+            <div class="notice notice-success"><p>Password di sicurezza del plugin aggiornata.</p></div>
         <?php endif; ?>
         <?php if (!empty($_GET['gdpr_processed'])): ?>
             <div class="notice notice-success"><p>Richiesta GDPR elaborata: <?php echo esc_html(absint($_GET['gdpr_anonymized'] ?? 0)); ?> record anonimizzati, <?php echo esc_html(absint($_GET['gdpr_deleted'])); ?> eliminati e <?php echo esc_html(absint($_GET['gdpr_transient'] ?? 0)); ?> dati temporanei rimossi.</p></div>
+        <?php endif; ?>
+        <?php if (!empty($_GET['audit_privacy_retry'])): ?>
+            <div class="notice notice-success"><p>Nuovo tentativo di bonifica dei log pianificato. La procedura riprenderà senza modificare catalogo o prenotazioni.</p></div>
         <?php endif; ?>
         <?php if (isset($_GET['mail_test'])): ?>
             <?php $mail_test_ok = sanitize_key(wp_unslash($_GET['mail_test'])) === 'accepted'; ?>
@@ -777,7 +788,6 @@ add_action('admin_post_scarto_update_credentials', function() {
         delete_option('scarto_credentials_setup_required');
     }
 
-    scarto_invalidate_all_staff_sessions();
     scarto_audit_log('credentials_rotated', 'wordpress_user', (string) get_current_user_id(), [
         'db_changed' => $db_password !== '',
     ]);
@@ -1391,26 +1401,6 @@ function scarto_verify_transaction_storage() {
     return true;
 }
 
-function scarto_sanitize_audit_details($details) {
-    if (!is_array($details)) return [];
-
-    $blocked_keys = ['ip', 'ip_address', 'email', 'password', 'token', 'address', 'indirizzo', 'via', 'civico', 'cap', 'citta', 'provincia', 'note_spedizione', 'noteSpedizione'];
-    $clean = [];
-    foreach ($details as $key => $value) {
-        $safe_key = scarto_sanitize_text((string) $key, 50);
-        if ($safe_key === '' || in_array(strtolower($safe_key), $blocked_keys, true)) continue;
-
-        if (is_bool($value) || is_int($value) || is_float($value) || $value === null) {
-            $clean[$safe_key] = $value;
-        } elseif (is_string($value)) {
-            $clean[$safe_key] = scarto_sanitize_text($value, 200);
-        } elseif (is_array($value)) {
-            $clean[$safe_key] = scarto_sanitize_audit_details($value);
-        }
-    }
-    return $clean;
-}
-
 function scarto_audit_category($action) {
     $action = (string) $action;
     if (str_starts_with($action, 'reservation_') || str_starts_with($action, 'order_') || str_starts_with($action, 'orders_')) return 'reservations';
@@ -1456,7 +1446,7 @@ function scarto_audit_log($action, $entity_type = null, $entity_id = null, $deta
             'action' => scarto_sanitize_text($action, 50),
             'outcome' => $outcome,
             'entity_type' => $entity_type ? scarto_sanitize_text($entity_type, 50) : null,
-            'entity_id' => $entity_id ? scarto_sanitize_text($entity_id, 50) : null,
+            'entity_id' => scarto_sanitize_audit_entity_id($entity_id),
             'subject_email' => $subject_email,
             'wp_user_id' => $wp_user_id,
             'details' => wp_json_encode(scarto_sanitize_audit_details($details), JSON_UNESCAPED_UNICODE),
@@ -1477,13 +1467,50 @@ function scarto_anonymize_audit_email($email) {
     global $wpdb;
     $email = strtolower(sanitize_email((string) $email));
     if (!$email || !is_email($email)) return 0;
-    return $wpdb->update(
+
+    $fingerprints = array_values(array_unique([
+        scarto_email_fingerprint($email),
+        scarto_email_lookup_hash($email),
+        hash('sha256', $email),
+    ]));
+    $where = ['subject_email = %s'];
+    $params = [$email];
+    foreach ($fingerprints as $fingerprint) {
+        $where[] = 'details LIKE %s';
+        $params[] = '%' . $wpdb->esc_like($fingerprint) . '%';
+    }
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, details FROM {$wpdb->scarto_audit_log} WHERE " . implode(' OR ', $where),
+        ...$params
+    ), ARRAY_A);
+    if ($wpdb->last_error) return false;
+
+    $details_updated = 0;
+    foreach ($rows ?: [] as $row) {
+        $decoded = json_decode((string) $row['details'], true);
+        if (!is_array($decoded)) continue;
+        $encoded = wp_json_encode(scarto_sanitize_audit_details($decoded), JSON_UNESCAPED_UNICODE);
+        if (!is_string($encoded) || hash_equals((string) $row['details'], $encoded)) continue;
+        $updated = $wpdb->update(
+            $wpdb->scarto_audit_log,
+            ['details' => $encoded],
+            ['id' => (int) $row['id']],
+            ['%s'],
+            ['%d']
+        );
+        if ($updated === false) return false;
+        $details_updated += $updated;
+    }
+
+    $subjects_updated = $wpdb->update(
         $wpdb->scarto_audit_log,
         ['subject_email' => null],
         ['subject_email' => $email],
         [null],
         ['%s']
     );
+    if ($subjects_updated === false) return false;
+    return (int) $subjects_updated + $details_updated;
 }
 
 // ============================================================================
@@ -1737,13 +1764,13 @@ function scarto_register_api_routes() {
     register_rest_route($ns, '/reserve', ['methods' => 'POST', 'callback' => 'scarto_api_reserve', 'permission_callback' => 'scarto_verify_json_request', 'args' => scarto_rest_route_args('reserve')]);
     register_rest_route($ns, '/reserve/confirm', ['methods' => 'POST', 'callback' => 'scarto_api_confirm_reservation', 'permission_callback' => 'scarto_verify_json_request', 'args' => scarto_rest_route_args('reserve_confirm')]);
     // Staff endpoints use WordPress accounts, capabilities and REST nonces.
-    register_rest_route($ns, '/status', ['methods' => 'POST', 'callback' => 'scarto_api_status', 'permission_callback' => 'scarto_verify_staff_session', 'args' => scarto_rest_route_args('status')]);
+    register_rest_route($ns, '/status', ['methods' => 'POST', 'callback' => 'scarto_api_status', 'permission_callback' => 'scarto_verify_staff_manage', 'args' => scarto_rest_route_args('status')]);
     register_rest_route($ns, '/admin/catalog', ['methods' => 'GET', 'callback' => 'scarto_api_admin_catalog', 'permission_callback' => 'scarto_verify_catalog_read', 'args' => scarto_rest_route_args('catalog')]);
     register_rest_route($ns, '/admin/settings', ['methods' => 'GET', 'callback' => 'scarto_api_get_admin_settings', 'permission_callback' => 'scarto_verify_settings_read']);
     register_rest_route($ns, '/admin/settings', ['methods' => 'POST', 'callback' => 'scarto_api_save_settings', 'permission_callback' => 'scarto_verify_settings_write', 'args' => scarto_rest_route_args('save_settings')]);
     register_rest_route($ns, '/orders', ['methods' => 'POST', 'callback' => 'scarto_api_get_orders', 'permission_callback' => 'scarto_verify_orders_access', 'args' => scarto_rest_route_args('orders')]);
-    register_rest_route($ns, '/admin/reservations', ['methods' => 'POST', 'callback' => 'scarto_api_create_staff_reservation', 'permission_callback' => 'scarto_verify_staff_session', 'args' => scarto_rest_route_args('staff_reserve')]);
-    register_rest_route($ns, '/admin/reservations/resend', ['methods' => 'POST', 'callback' => 'scarto_api_resend_reservation_email', 'permission_callback' => 'scarto_verify_staff_session', 'args' => scarto_rest_route_args('resend_summary')]);
+    register_rest_route($ns, '/admin/reservations', ['methods' => 'POST', 'callback' => 'scarto_api_create_staff_reservation', 'permission_callback' => 'scarto_verify_staff_manage', 'args' => scarto_rest_route_args('staff_reserve')]);
+    register_rest_route($ns, '/admin/reservations/resend', ['methods' => 'POST', 'callback' => 'scarto_api_resend_reservation_email', 'permission_callback' => 'scarto_verify_staff_manage', 'args' => scarto_rest_route_args('resend_summary')]);
 
     // Catalog actions require the catalog capability plus the plugin step-up password.
     register_rest_route($ns, '/books', ['methods' => 'POST', 'callback' => 'scarto_api_books_import', 'permission_callback' => 'scarto_verify_db_admin_auth', 'args' => scarto_rest_route_args('books_import')]);
@@ -1762,7 +1789,7 @@ function scarto_register_api_routes() {
 }
 
 function scarto_verify_admin_auth($request) {
-    return scarto_verify_staff_session($request);
+    return scarto_verify_staff_manage($request);
 }
 
 function scarto_verify_privacy_db_auth($request) {
@@ -1807,13 +1834,13 @@ function scarto_verify_db_admin_auth($request) {
     $max_attempts = scarto_get_rate_limit('max_login_attempts');
     $lockout_minutes = scarto_get_rate_limit('login_lockout_minutes');
     if (!scarto_rate_limit_consume($rate_key, $max_attempts, $lockout_minutes * 60)) {
-        scarto_audit_log('db_admin_auth_blocked', null, null, ['ip_hash' => substr(hash('sha256', $ip), 0, 16)]);
+        scarto_audit_log('db_admin_auth_blocked');
         return new WP_Error('too_many_attempts', 'Troppi tentativi. Riprova tra ' . $lockout_minutes . ' minuti.', ['status' => 429]);
     }
 
     $p = $request->get_json_params();
     if (!scarto_verify_password($p['password'] ?? '', get_option('scarto_db_admin_password_hash'))) {
-        scarto_audit_log('db_admin_auth_failed', null, null, ['ip_hash' => substr(hash('sha256', $ip), 0, 16)]);
+        scarto_audit_log('db_admin_auth_failed');
         return new WP_Error('rest_forbidden', 'Password di sicurezza del plugin errata.', ['status' => 403]);
     }
 
@@ -2536,142 +2563,6 @@ function scarto_api_books_search($request) {
 }
 
 // ============================================================================
-// API: AUTH
-// ============================================================================
-
-function scarto_api_login($request) {
-    $ip = scarto_get_rate_limit_ip();
-    $key = 'login_' . $ip;
-    $max_attempts = scarto_get_rate_limit('max_login_attempts');
-    $lockout_minutes = scarto_get_rate_limit('login_lockout_minutes');
-
-    if (!scarto_rate_limit_consume($key, $max_attempts, $lockout_minutes * 60)) {
-        return new WP_Error('too_many_attempts', 'Troppi tentativi. Riprova tra ' . $lockout_minutes . ' minuti.', ['status' => 429]);
-    }
-
-    $p = $request->get_json_params();
-    if (scarto_verify_password($p['password'] ?? '', get_option('scarto_admin_password_hash'))) {
-        scarto_rate_limit_reset($key);
-        $session = scarto_create_staff_session();
-        scarto_audit_log('login_success', 'session', $session['session_id']);
-        return scarto_private_response([
-            'success' => true,
-            'csrf' => $session['csrf'],
-            'mustChangePassword' => (bool) get_option('scarto_password_must_change'),
-        ]);
-    }
-
-    scarto_audit_log('login_failed');
-    return new WP_Error('auth', 'Password errata', ['status' => 401]);
-}
-
-function scarto_api_session($request) {
-    $session = scarto_get_staff_session($request, false);
-    if (is_wp_error($session)) {
-        return scarto_private_response(['authenticated' => false], 200);
-    }
-
-    return scarto_private_response([
-        'authenticated' => true,
-        'csrf' => $session['data']['csrf'],
-        'mustChangePassword' => (bool) get_option('scarto_password_must_change'),
-    ]);
-}
-
-function scarto_api_logout($request) {
-    $session = scarto_get_staff_session($request, true);
-    $session_id = is_wp_error($session) ? null : ($session['data']['session_id'] ?? null);
-    scarto_destroy_staff_session();
-    scarto_audit_log('logout', 'session', $session_id);
-    return scarto_private_response(['success' => true]);
-}
-
-function scarto_api_recover_password($request) {
-    global $wpdb;
-    $ip = scarto_get_rate_limit_ip();
-    $key = 'recover_' . $ip;
-    
-    if (!scarto_rate_limit_consume($key, 1, SCARTO_DEFAULT_RECOVERY_COOLDOWN_MINUTES * 60)
-        || !scarto_rate_limit_consume('recover_global', 20, HOUR_IN_SECONDS)
-    ) {
-        return new WP_Error('rate_limit', 'Email già inviata. Riprova più tardi.', ['status' => 429]);
-    }
-    
-    $token = bin2hex(random_bytes(32));
-    $wpdb->insert($wpdb->scarto_recovery_tokens, ['token' => hash('sha256', $token), 'expires_at' => date('Y-m-d H:i:s', time() + 3600)], ['%s', '%s']);
-    $wpdb->query("DELETE FROM {$wpdb->scarto_recovery_tokens} WHERE expires_at < NOW() OR used = 1");
-    
-    $settings = scarto_get_settings();
-    $body = "RECUPERO PASSWORD\n=====================================\n\nIl tuo codice: $token\n\nValido per 1 ora.\n\n" . $settings['library_name'];
-    
-    if (wp_mail($settings['email_to'], 'Recupero Password - Scarto Librario', $body, ['From: ' . $settings['email_from_name'] . ' <' . $settings['email_from'] . '>'])) {
-        scarto_audit_log('password_recovery_requested');
-        return rest_ensure_response(['success' => true]);
-    }
-    return new WP_Error('email_error', 'Errore invio email.', ['status' => 500]);
-}
-
-function scarto_api_reset_password($request) {
-    global $wpdb;
-    $p = $request->get_json_params();
-    $token = $p['token'] ?? '';
-    $new_pass = $p['newPassword'] ?? '';
-    
-    if (strlen($token) !== 64) return new WP_Error('bad_request', 'Codice non valido.', ['status' => 400]);
-    if (!scarto_rate_limit_consume('password_reset_' . scarto_get_rate_limit_ip(), 20, HOUR_IN_SECONDS)) {
-        return new WP_Error('rate_limit', 'Troppe richieste.', ['status' => 429]);
-    }
-    if (strlen($new_pass) < SCARTO_MIN_PASSWORD_LENGTH) return new WP_Error('bad_request', 'Password troppo corta.', ['status' => 400]);
-    if (strlen($new_pass) > SCARTO_MAX_PASSWORD_LENGTH) return new WP_Error('bad_request', 'Password troppo lunga.', ['status' => 400]);
-    if (!preg_match('/[A-Z]/', $new_pass) || !preg_match('/[a-z]/', $new_pass) || !preg_match('/[0-9]/', $new_pass)) {
-        return new WP_Error('bad_request', 'Servono maiuscole, minuscole e numeri.', ['status' => 400]);
-    }
-    
-    $valid = $wpdb->get_row($wpdb->prepare(
-        "SELECT id FROM {$wpdb->scarto_recovery_tokens} WHERE token = %s AND expires_at > NOW() AND used = 0",
-        hash('sha256', $token)
-    ));
-    
-    if (!$valid) {
-        scarto_audit_log('password_reset_invalid_token', null, null, []);
-        return new WP_Error('invalid_token', 'Codice non valido o scaduto.', ['status' => 400]);
-    }
-    
-    $claimed = $wpdb->query($wpdb->prepare(
-        "UPDATE {$wpdb->scarto_recovery_tokens} SET used = 1 WHERE id = %d AND used = 0",
-        $valid->id
-    ));
-    if ($claimed !== 1) {
-        return new WP_Error('invalid_token', 'Codice non valido o già usato.', ['status' => 400]);
-    }
-    update_option('scarto_admin_password_hash', password_hash($new_pass, PASSWORD_BCRYPT, ['cost' => 12]));
-    delete_option('scarto_password_must_change');
-    scarto_invalidate_all_staff_sessions();
-    scarto_audit_log('password_reset_success', null, null, []);
-    
-    return rest_ensure_response(['success' => true]);
-}
-
-function scarto_api_change_password($request) {
-    $p = $request->get_json_params();
-    $new_pass = $p['newPassword'] ?? '';
-    
-    if (strlen($new_pass) > SCARTO_MAX_PASSWORD_LENGTH) return new WP_Error('bad_request', 'Password troppo lunga.', ['status' => 400]);
-    if (strlen($new_pass) < SCARTO_MIN_PASSWORD_LENGTH) return new WP_Error('bad_request', 'Password troppo corta (min 12).', ['status' => 400]);
-    if (!preg_match('/[A-Z]/', $new_pass) || !preg_match('/[a-z]/', $new_pass) || !preg_match('/[0-9]/', $new_pass)) {
-        return new WP_Error('bad_request', 'Servono maiuscole, minuscole e numeri.', ['status' => 400]);
-    }
-    
-    update_option('scarto_admin_password_hash', password_hash($new_pass, PASSWORD_BCRYPT, ['cost' => 12]));
-    delete_option('scarto_password_must_change');
-    delete_transient('scarto_initial_password');
-    scarto_invalidate_all_staff_sessions();
-    scarto_audit_log('password_changed', null, null, []);
-    
-    return rest_ensure_response(['success' => true]);
-}
-
-// ============================================================================
 // API: RESERVE (email verification followed by atomic creation)
 // ============================================================================
 
@@ -2987,15 +2878,16 @@ function scarto_api_reserve($request) {
 
     if (!scarto_send_mail_with_status($email, $subject, $body, $headers, [], 'reservation_otp')) {
         $wpdb->delete($wpdb->scarto_reservation_verifications, ['request_id' => $request_id], ['%s']);
-        scarto_audit_log('reservation_verification_email_failed', 'verification', $request_id, [
-            'email_hash' => scarto_email_fingerprint($email),
-        ], ['subject_email' => $email, 'outcome' => 'failed', 'category' => 'email']);
+        scarto_audit_log('reservation_verification_email_failed', 'verification', $request_id, [], [
+            'subject_email' => $email,
+            'outcome' => 'failed',
+            'category' => 'email',
+        ]);
         return new WP_Error('email_delivery_failed', 'Invio del codice non riuscito. Riprova più tardi.', ['status' => 503]);
     }
 
     scarto_audit_log('reservation_verification_requested', 'verification', $request_id, [
         'books' => count($payload['bookIds']),
-        'email_hash' => scarto_email_fingerprint($email),
         'email_exempt' => $email_exempt,
     ], ['subject_email' => $email, 'outcome' => 'success']);
 
@@ -3291,7 +3183,6 @@ function scarto_create_verified_reservation($payload, $staff_created = false) {
     scarto_invalidate_caches();
     scarto_audit_log($staff_created ? 'staff_reservation_created' : 'reservation_created', 'order', $code, [
         'books' => $inserted,
-        'email_hash' => $normalized_email !== '' ? scarto_email_fingerprint($normalized_email) : null,
         'email_present' => $normalized_email !== '',
         'email_exempt' => $email_exempt,
         'source' => $staff_created ? 'in_person' : 'online',
@@ -3607,70 +3498,9 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
     $expiry_date = wp_date('d/m/Y', intval($ts/1000) + ($reservation_days * 86400));
     $creation_date = wp_date('d/m/Y H:i', intval($ts/1000));
     
-    // Try TCPDF first (commonly available)
-    if (class_exists('TCPDF')) {
-        $generated = scarto_generate_pdf_tcpdf($pdf_path, $code, $user, $books, $ts, $reservation_days, $s);
-        if ($generated) @chmod($generated, 0600);
-        if (!$generated) scarto_delete_temp_reservation_pdf($pdf_path);
-        return $generated;
-    }
-    
-    // Try FPDF if available
-    if (class_exists('FPDF')) {
-        $generated = scarto_generate_pdf_fpdf($pdf_path, $code, $user, $books, $s, $creation_date, $expiry_date);
-        if ($generated) @chmod($generated, 0600);
-        if (!$generated) scarto_delete_temp_reservation_pdf($pdf_path);
-        return $generated;
-    }
-    
-    // Fallback: Create a proper minimal PDF manually
-    // This creates a valid PDF 1.4 document that will open in any reader
-    $content_lines = [];
-    $content_lines[] = 'RIEPILOGO PRENOTAZIONE SCARTO LIBRARIO';
-    $content_lines[] = '================================================';
-    $content_lines[] = '';
-    $content_lines[] = 'CODICE PRENOTAZIONE: ' . $code;
-    $content_lines[] = '';
-    $content_lines[] = 'Data prenotazione: ' . $creation_date;
-    $content_lines[] = 'Scadenza ritiro: ' . $expiry_date . ' (' . $reservation_days . ' giorni)';
-    $content_lines[] = '';
-    $content_lines[] = '------------------------------------------------';
-    $content_lines[] = 'DATI RICHIEDENTE';
-    $content_lines[] = '------------------------------------------------';
-    $content_lines[] = 'Nome: ' . $user['nome'] . ' ' . $user['cognome'];
-    if (!empty($user['email'])) {
-        $content_lines[] = 'Email: ' . $user['email'];
-    }
-    if (!empty($user['indirizzo'])) {
-        $content_lines[] = 'Indirizzo: ' . $user['indirizzo'];
-    }
-    $content_lines[] = '';
-    $content_lines[] = '------------------------------------------------';
-    $content_lines[] = 'LIBRI PRENOTATI (' . count($books) . ' volumi)';
-    $content_lines[] = '------------------------------------------------';
-    
-    foreach ($books as $i => $b) {
-        $num = $i + 1;
-        $titolo = isset($b['titolo']) ? scarto_substr($b['titolo'], 0, 45) : 'N/D';
-        $autore = isset($b['autore']) ? scarto_substr($b['autore'], 0, 30) : 'N/D';
-        $content_lines[] = $num . '. ' . $titolo;
-        $content_lines[] = '   Autore: ' . $autore . ' | Inv: ' . ($b['inventario'] ?? '-');
-    }
-    
-    $content_lines[] = '';
-    $content_lines[] = '------------------------------------------------';
-    $content_lines[] = 'ISTRUZIONI PER IL RITIRO';
-    $content_lines[] = '------------------------------------------------';
-    $content_lines[] = '1. Presentarsi presso ' . $s['library_name'];
-    if (!empty($s['library_address'])) {
-        $content_lines[] = '   ' . $s['library_address'];
-    }
-    $content_lines[] = '2. Mostrare questo codice al personale';
-    $content_lines[] = '3. Ritirare i libri entro il ' . $expiry_date;
-    $content_lines[] = '';
-    $content_lines[] = 'Conservare questo documento come promemoria.';
-    
-    $safe_pdf_line = static function($line) {
+    // Use one dependency-free renderer on every hosting environment so the
+    // downloaded document and the email attachment always share the same style.
+    $plain_pdf_line = static function($line) {
         $line = (string) $line;
         if (function_exists('iconv')) {
             $converted = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $line);
@@ -3678,29 +3508,146 @@ function scarto_generate_reservation_pdf($code, $user, $books, $ts, $reservation
         } else {
             $line = preg_replace('/[^\x20-\x7E]/', '?', $line);
         }
-        return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], (string) $line);
+        return trim((string) $line);
+    };
+    $escape_pdf_line = static function($line) use ($plain_pdf_line) {
+        return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $plain_pdf_line($line));
+    };
+    $wrap_pdf_line = static function($line, $max_chars) use ($plain_pdf_line) {
+        $line = $plain_pdf_line($line);
+        if ($line === '') return [''];
+        return explode("\n", wordwrap($line, max(10, (int) $max_chars), "\n", true));
     };
 
-    // Keep every volume: the dependency-free fallback paginates instead of
-    // silently truncating content when TCPDF/FPDF are unavailable.
-    $page_lines = array_chunk($content_lines, 43);
-    if (!$page_lines) $page_lines = [[]];
-    $page_count = count($page_lines);
-    $streams = [];
-    foreach ($page_lines as $page_index => $lines) {
-        $stream = "BT\n/F1 11 Tf\n";
-        $y = 800;
-        foreach ($lines as $line) {
-            $line = $safe_pdf_line($line);
-            $stream .= "1 0 0 1 50 {$y} Tm\n({$line}) Tj\n";
+    $streams = [''];
+    $page_index = 0;
+    $y = 770;
+    $margin = 57;
+    $right = 538;
+    $content_bottom = 100;
+    $new_page = static function() use (&$streams, &$page_index, &$y) {
+        $streams[] = '';
+        $page_index++;
+        $y = 780;
+    };
+    $add_line = static function($x1, $line_y, $x2, $width = 0.85) use (&$streams, &$page_index) {
+        $streams[$page_index] .= sprintf("%.2F w\n%.2F %.2F m\n%.2F %.2F l\nS\n", $width, $x1, $line_y, $x2, $line_y);
+    };
+    $add_text = static function($text, $x, $text_y, $size = 10, $bold = false, $center = false, $blue = false) use (&$streams, &$page_index, $plain_pdf_line, $escape_pdf_line) {
+        $plain = $plain_pdf_line($text);
+        if ($center) {
+            $estimated_width = strlen($plain) * $size * 0.5;
+            $x = max(20, (595 - $estimated_width) / 2);
+        }
+        $color = $blue ? "0.145 0.388 0.922 rg\n" : "0 0 0 rg\n";
+        $font = $bold ? 'F2' : 'F1';
+        $streams[$page_index] .= sprintf(
+            "BT\n/%s %d Tf\n%s1 0 0 1 %.2F %.2F Tm\n(%s) Tj\nET\n",
+            $font,
+            $size,
+            $color,
+            $x,
+            $text_y,
+            $escape_pdf_line($plain)
+        );
+    };
+    $ensure_space = static function($height, $continuation = '') use (&$y, $content_bottom, $new_page, $add_text, $add_line, $margin, $right) {
+        if ($y - $height >= $content_bottom) return;
+        $new_page();
+        if ($continuation !== '') {
+            $add_text($continuation, $margin, $y, 12, true);
+            $y -= 12;
+            $add_line($margin, $y, $right, 0.6);
             $y -= 14;
         }
-        $footer = array_map($safe_pdf_line, scarto_reservation_pdf_footer($s));
-        $page_label = $safe_pdf_line('Pagina ' . ($page_index + 1) . ' di ' . $page_count);
-        $stream .= "ET\n0.5 w\n50 70 m\n545 70 l\nS\nBT\n/F2 8 Tf\n1 0 0 1 50 56 Tm\n({$footer[0]}) Tj\n";
-        $stream .= "/F1 8 Tf\n1 0 0 1 50 44 Tm\n({$footer[1]}) Tj\n1 0 0 1 50 32 Tm\n({$footer[2]}) Tj\n";
-        $stream .= "/F1 8 Tf\n1 0 0 1 500 18 Tm\n({$page_label}) Tj\nET\n";
-        $streams[] = $stream;
+    };
+
+    $add_text('Riepilogo Prenotazione Scarto Librario', 0, $y, 18, true, true);
+    $y -= 42;
+    $add_line($margin, $y, $right, 1.4);
+    $y -= 28;
+    $add_text('CODICE PRENOTAZIONE:', $margin, $y, 16, true);
+    $y -= 30;
+    $add_text($code, $margin, $y, 24, true, false, true);
+    $y -= 42;
+    $add_text('Data prenotazione: ' . $creation_date, $margin, $y, 11);
+    $y -= 17;
+    $add_text('Scadenza prenotazione: ' . $expiry_date . ' (' . $reservation_days . ' giorni)', $margin, $y, 11);
+    $y -= 34;
+
+    $add_line($margin, $y, $right, 0.85);
+    $y -= 23;
+    $add_text('DATI PRENOTAZIONE', $margin, $y, 12, true);
+    $y -= 23;
+    $add_text('Nome: ' . ($user['nome'] ?? '') . ' ' . ($user['cognome'] ?? ''), $margin, $y, 10);
+    if (!empty($user['email'])) {
+        $y -= 17;
+        $add_text('Email: ' . $user['email'], $margin, $y, 10);
+    }
+    if (!empty($user['indirizzo'])) {
+        foreach ($wrap_pdf_line('Indirizzo: ' . $user['indirizzo'], 88) as $address_line) {
+            $y -= 17;
+            $add_text($address_line, $margin, $y, 10);
+        }
+    }
+    $y -= 25;
+
+    $add_line($margin, $y, $right, 0.85);
+    $y -= 23;
+    $books_heading = 'LIBRI PRENOTATI (' . count($books) . ' volumi)';
+    $add_text($books_heading, $margin, $y, 12, true);
+    $y -= 28;
+
+    foreach ($books as $book_index => $book) {
+        $title_lines = $wrap_pdf_line(($book_index + 1) . '. ' . ($book['titolo'] ?? 'N/D'), 78);
+        $author_lines = $wrap_pdf_line(
+            '   Autore: ' . ($book['autore'] ?? 'N/D') . ' | Inv: ' . ($book['inventario'] ?? '-'),
+            88
+        );
+        $required_height = (count($title_lines) + count($author_lines)) * 14 + 8;
+        $ensure_space($required_height, $books_heading . ' - CONTINUA');
+        foreach ($title_lines as $title_line) {
+            $add_text($title_line, $margin, $y, 9, true);
+            $y -= 14;
+        }
+        foreach ($author_lines as $author_line) {
+            $add_text($author_line, $margin, $y, 9);
+            $y -= 14;
+        }
+        $y -= 7;
+    }
+
+    $instruction_lines = [
+        '1. Presentarsi presso ' . ($s['library_name'] ?? 'la biblioteca'),
+    ];
+    if (!empty($s['library_address'])) $instruction_lines[] = '   ' . $s['library_address'];
+    $instruction_lines[] = '2. Mostrare questo codice al personale';
+    $instruction_lines[] = '3. Ritirare i libri entro il ' . $expiry_date;
+    $instruction_lines[] = 'Conservare questo documento come promemoria.';
+    $wrapped_instructions = [];
+    foreach ($instruction_lines as $instruction_line) {
+        foreach ($wrap_pdf_line($instruction_line, 88) as $wrapped_line) $wrapped_instructions[] = $wrapped_line;
+    }
+    $ensure_space(55 + (count($wrapped_instructions) * 15));
+    $add_line($margin, $y, $right, 0.85);
+    $y -= 23;
+    $add_text('ISTRUZIONI PER IL RITIRO', $margin, $y, 10, true);
+    $y -= 20;
+    foreach ($wrapped_instructions as $instruction_index => $instruction_line) {
+        if ($instruction_index === count($wrapped_instructions) - 1) $y -= 8;
+        $add_text($instruction_line, $margin, $y, 10);
+        $y -= 15;
+    }
+
+    $page_count = count($streams);
+    $footer = scarto_reservation_pdf_footer($s);
+    foreach ($streams as $footer_page => $_stream) {
+        $page_index = $footer_page;
+        $add_line($margin, 71, $right, 0.55);
+        $add_text($footer[0], 0, 56, 8, true, true);
+        if ($footer[1] !== '') $add_text($footer[1], 0, 43, 8, false, true);
+        if ($footer[2] !== '') $add_text($footer[2], 0, 30, 8, false, true);
+        $add_text('Pagina ' . ($footer_page + 1) . ' di ' . $page_count, 500, 17, 8);
     }
 
     // Build a valid PDF 1.4 document with one Page/Contents pair per chunk.
@@ -4589,9 +4536,9 @@ function scarto_api_gdpr_request($request) {
     ];
 
     wp_mail($email, $subject, $body, $headers);
-    scarto_audit_log('gdpr_verification_requested', null, null, [
-        'email_hash' => scarto_email_fingerprint($email),
-        'action' => $action
+    scarto_audit_log('gdpr_verification_requested', null, null, ['action' => $action], [
+        'subject_email' => $email,
+        'category' => 'privacy',
     ]);
 
     return scarto_public_response($generic_response, 202);
@@ -4629,8 +4576,10 @@ function scarto_api_gdpr_verify($request) {
     ));
 
     if (!$record) {
-        scarto_audit_log('gdpr_verification_failed', null, null, [
-            'email_hash' => scarto_email_fingerprint($email)
+        scarto_audit_log('gdpr_verification_failed', null, null, [], [
+            'subject_email' => $email,
+            'outcome' => 'failed',
+            'category' => 'privacy',
         ]);
         return new WP_Error('invalid_token', 'Codice non valido, scaduto o già usato.', ['status' => 400]);
     }
@@ -4667,9 +4616,8 @@ function scarto_get_subject_audit_metadata($email) {
                 ip_address, user_agent, created_at
          FROM {$wpdb->scarto_audit_log}
          WHERE subject_email = %s
-         ORDER BY id ASC LIMIT %d",
-        $email,
-        SCARTO_ORDERS_LIMIT
+         ORDER BY id ASC",
+        $email
     ), ARRAY_A) ?: [];
 
     return array_map(static function($row) {
@@ -4696,7 +4644,7 @@ function scarto_perform_gdpr_export($email) {
     $orders = $wpdb->get_results($wpdb->prepare(
         "SELECT code, status, user_nome, user_cognome, user_email, user_indirizzo,
                 user_via, user_civico, user_cap, user_citta, user_provincia, user_note_spedizione, reservation_source,
-                created_at, updated_at, completed_at, expires_at, ip_address
+                created_at, updated_at, completed_at, expires_at, ip_address, user_agent
          FROM {$wpdb->scarto_orders} WHERE user_email = %s ORDER BY created_at DESC",
         $email
     ), ARRAY_A);
@@ -4747,6 +4695,7 @@ function scarto_perform_gdpr_export($email) {
             ],
             'technical_data' => [
                 'ip_address' => $order['ip_address'],
+                'user_agent' => $order['user_agent'],
                 'created_at' => $order['created_at'] ? wp_date('Y-m-d H:i:s', intval($order['created_at'] / 1000)) : null,
                 'completed_at' => $order['completed_at'] ? wp_date('Y-m-d H:i:s', intval($order['completed_at'] / 1000)) : null,
                 'expires_at' => $order['expires_at'] ? wp_date('Y-m-d H:i:s', intval($order['expires_at'] / 1000)) : null
@@ -4756,9 +4705,8 @@ function scarto_perform_gdpr_export($email) {
     }
 
     scarto_audit_log('gdpr_data_export_verified', null, null, [
-        'email_hash' => scarto_email_fingerprint($email),
-        'orders_count' => count($orders)
-    ]);
+        'orders_count' => count($orders),
+    ], ['subject_email' => $email, 'category' => 'privacy']);
 
     return rest_ensure_response($export_data);
 }
@@ -4768,6 +4716,7 @@ function scarto_perform_gdpr_export($email) {
  */
 function scarto_perform_gdpr_delete($email) {
     global $wpdb;
+    $operation_reference = wp_generate_uuid4();
 
     $wpdb->query('START TRANSACTION');
 
@@ -4816,8 +4765,7 @@ function scarto_perform_gdpr_delete($email) {
     }
     $wpdb->query('COMMIT');
 
-    scarto_audit_log('gdpr_data_deletion_verified', null, null, [
-        'email_hash' => scarto_email_fingerprint($email),
+    scarto_audit_log('gdpr_data_deletion_verified', 'privacy_operation', $operation_reference, [
         'anonymized' => $anonymized,
         'deleted' => $deleted,
         'transient_cleanup' => $transient_cleanup,
@@ -4854,7 +4802,7 @@ function scarto_api_gdpr_export_admin($request) {
     $orders = $wpdb->get_results($wpdb->prepare(
         "SELECT code, status, user_nome, user_cognome, user_email, user_indirizzo,
                 user_via, user_civico, user_cap, user_citta, user_provincia, user_note_spedizione, reservation_source,
-                created_at, updated_at, completed_at, expires_at, ip_address
+                created_at, updated_at, completed_at, expires_at, ip_address, user_agent
          FROM {$wpdb->scarto_orders} WHERE $where_clause ORDER BY created_at DESC",
         $where_param
     ), ARRAY_A);
@@ -4905,6 +4853,7 @@ function scarto_api_gdpr_export_admin($request) {
             ],
             'technical_data' => [
                 'ip_address' => $order['ip_address'],
+                'user_agent' => $order['user_agent'],
                 'created_at' => $order['created_at'] ? wp_date('Y-m-d H:i:s', intval($order['created_at'] / 1000)) : null,
                 'completed_at' => $order['completed_at'] ? wp_date('Y-m-d H:i:s', intval($order['completed_at'] / 1000)) : null,
                 'expires_at' => $order['expires_at'] ? wp_date('Y-m-d H:i:s', intval($order['expires_at'] / 1000)) : null
@@ -4914,10 +4863,9 @@ function scarto_api_gdpr_export_admin($request) {
     }
 
     scarto_audit_log('gdpr_data_export_admin', null, null, [
-        'email_hash' => $email ? scarto_email_fingerprint($email) : null,
         'code_scoped' => !$email && $code !== '',
         'orders_count' => count($orders)
-    ]);
+    ], ['subject_email' => $subject_email ?: null, 'category' => 'privacy']);
 
     return rest_ensure_response($export_data);
 }
@@ -5041,6 +4989,14 @@ function scarto_wp_privacy_exporter($email_address, $page = 1) {
         $limit,
         $offset
     ), ARRAY_A);
+    $audit_rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, category, action, outcome, entity_type, entity_id, ip_address, user_agent, created_at
+         FROM {$wpdb->scarto_audit_log}
+         WHERE subject_email = %s ORDER BY id ASC LIMIT %d OFFSET %d",
+        strtolower(sanitize_email($email_address)),
+        $limit,
+        $offset
+    ), ARRAY_A) ?: [];
 
     $data = [];
     foreach ($orders ?: [] as $order) {
@@ -5069,6 +5025,7 @@ function scarto_wp_privacy_exporter($email_address, $page = 1) {
                 ['name' => 'Data creazione', 'value' => wp_date('Y-m-d H:i:s', (int) $order['created_at'] / 1000)],
                 ['name' => 'Informativa accettata', 'value' => $order['privacy_version'] ?? 'non registrata'],
                 ['name' => 'Indirizzo IP', 'value' => $order['ip_address'] ?? 'anonimizzato'],
+                ['name' => 'User-Agent prenotazione', 'value' => $order['user_agent'] ?? 'anonimizzato'],
                 ['name' => 'Libri', 'value' => wp_json_encode($items, JSON_UNESCAPED_UNICODE)],
             ],
         ];
@@ -5132,31 +5089,29 @@ function scarto_wp_privacy_exporter($email_address, $page = 1) {
             ];
         }
 
-        $audit_rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT id, category, action, outcome, entity_type, entity_id, ip_address, user_agent, created_at
-             FROM {$wpdb->scarto_audit_log}
-             WHERE subject_email = %s ORDER BY id ASC LIMIT 500",
-            strtolower(sanitize_email($email_address))
-        ), ARRAY_A) ?: [];
-        foreach ($audit_rows as $audit_row) {
-            $data[] = [
-                'group_id' => 'scarto-librario-audit',
-                'group_label' => 'Log attività Scarto Librario',
-                'item_id' => 'scarto-audit-' . $audit_row['id'],
-                'data' => [
-                    ['name' => 'Operazione', 'value' => $audit_row['action']],
-                    ['name' => 'Esito', 'value' => $audit_row['outcome']],
-                    ['name' => 'Categoria', 'value' => $audit_row['category']],
-                    ['name' => 'Indirizzo IP', 'value' => $audit_row['ip_address'] ?: 'anonimizzato'],
-                    ['name' => 'User-Agent', 'value' => $audit_row['user_agent'] ?: 'anonimizzato'],
-                    ['name' => 'Entità', 'value' => trim(($audit_row['entity_type'] ?: '') . ' ' . ($audit_row['entity_id'] ?: ''))],
-                    ['name' => 'Data', 'value' => get_date_from_gmt($audit_row['created_at'], 'Y-m-d H:i:s')],
-                ],
-            ];
-        }
     }
 
-    return ['data' => $data, 'done' => count($orders ?: []) < $limit];
+    foreach ($audit_rows as $audit_row) {
+        $data[] = [
+            'group_id' => 'scarto-librario-audit',
+            'group_label' => 'Log attività Scarto Librario',
+            'item_id' => 'scarto-audit-' . $audit_row['id'],
+            'data' => [
+                ['name' => 'Operazione', 'value' => $audit_row['action']],
+                ['name' => 'Esito', 'value' => $audit_row['outcome']],
+                ['name' => 'Categoria', 'value' => $audit_row['category']],
+                ['name' => 'Indirizzo IP', 'value' => $audit_row['ip_address'] ?: 'anonimizzato'],
+                ['name' => 'User-Agent', 'value' => $audit_row['user_agent'] ?: 'anonimizzato'],
+                ['name' => 'Entità', 'value' => trim(($audit_row['entity_type'] ?: '') . ' ' . ($audit_row['entity_id'] ?: ''))],
+                ['name' => 'Data', 'value' => get_date_from_gmt($audit_row['created_at'], 'Y-m-d H:i:s')],
+            ],
+        ];
+    }
+
+    return [
+        'data' => $data,
+        'done' => count($orders ?: []) < $limit && count($audit_rows) < $limit,
+    ];
 }
 
 add_filter('wp_privacy_personal_data_erasers', function($erasers) {
@@ -5170,6 +5125,7 @@ add_filter('wp_privacy_personal_data_erasers', function($erasers) {
 function scarto_wp_privacy_eraser($email_address, $page = 1) {
     global $wpdb;
     $email = sanitize_email($email_address);
+    $operation_reference = wp_generate_uuid4();
     $restriction_retained = (bool) scarto_get_email_blocklist_entry($email);
     $active = (int) $wpdb->get_var($wpdb->prepare(
         "SELECT COUNT(*) FROM {$wpdb->scarto_orders} WHERE user_email = %s AND status = 'active'",
@@ -5212,8 +5168,7 @@ function scarto_wp_privacy_eraser($email_address, $page = 1) {
     ));
     $transient_cleanup = scarto_delete_transient_personal_data($email);
     $audit_anonymized = scarto_anonymize_audit_email($email);
-    scarto_audit_log('wp_privacy_eraser', null, null, [
-        'email_hash' => scarto_email_fingerprint($email),
+    scarto_audit_log('wp_privacy_eraser', 'privacy_operation', $operation_reference, [
         'anonymized' => (int) $anonymized,
         'deleted' => $deleted,
         'transient_cleanup' => $transient_cleanup,

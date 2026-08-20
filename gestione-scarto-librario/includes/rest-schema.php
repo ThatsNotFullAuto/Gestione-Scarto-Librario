@@ -139,15 +139,6 @@ function scarto_rest_route_args($route) {
                 'q' => scarto_rest_text_arg(true, 200),
                 'limit' => ['type' => 'integer', 'default' => 20, 'minimum' => 5, 'maximum' => 50],
             ];
-        case 'login':
-            return ['password' => scarto_rest_password_arg()];
-        case 'reset_password':
-            return [
-                'token' => ['type' => 'string', 'required' => true, 'pattern' => '^[a-fA-F0-9]{64}$'],
-                'newPassword' => scarto_rest_password_arg(),
-            ];
-        case 'change_password':
-            return ['newPassword' => scarto_rest_password_arg()];
         case 'reserve':
         case 'staff_reserve':
             $staff_reservation = $route === 'staff_reserve';
@@ -266,13 +257,8 @@ function scarto_rest_allowed_json_fields($route) {
         '/scarto/v1/reserve/confirm' => ['requestId', 'verificationCode'],
         '/scarto/v1/admin/reservations' => ['booksDetails', 'userData', 'consent'],
         '/scarto/v1/admin/reservations/resend' => ['code'],
-        '/scarto/v1/login' => ['password'],
-        '/scarto/v1/recover-password' => [],
-        '/scarto/v1/reset-password' => ['token', 'newPassword'],
-        '/scarto/v1/logout' => [],
         '/scarto/v1/status' => ['code', 'action'],
         '/scarto/v1/admin/settings' => ['settings'],
-        '/scarto/v1/change-password' => ['newPassword'],
         '/scarto/v1/orders' => ['page', 'per_page', 'search', 'status'],
         '/scarto/v1/books' => ['password', 'force', 'books'],
         '/scarto/v1/reset' => ['password'],

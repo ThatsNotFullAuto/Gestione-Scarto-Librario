@@ -5,9 +5,6 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('SCARTO_SESSION_COOKIE', '__Host-scarto_staff_session');
-define('SCARTO_SESSION_TTL', 30 * MINUTE_IN_SECONDS);
-define('SCARTO_SESSION_ABSOLUTE_TTL', 8 * HOUR_IN_SECONDS);
 define('SCARTO_PUBLIC_BODY_LIMIT', 131072);
 define('SCARTO_ADMIN_BODY_LIMIT', 1048576);
 define('SCARTO_IMPORT_BODY_LIMIT', 20 * 1024 * 1024);
@@ -83,87 +80,6 @@ function scarto_verify_json_request($request, $limit = SCARTO_PUBLIC_BODY_LIMIT)
     return scarto_verify_request_origin($request);
 }
 
-function scarto_session_key($token) {
-    return 'scarto_session_' . hash('sha256', $token);
-}
-
-function scarto_set_session_cookie($token, $expires) {
-    setcookie(SCARTO_SESSION_COOKIE, $token, [
-        'expires' => $expires,
-        'path' => '/',
-        'secure' => true,
-        'httponly' => true,
-        'samesite' => 'Strict',
-    ]);
-}
-
-function scarto_clear_session_cookie() {
-    setcookie(SCARTO_SESSION_COOKIE, '', [
-        'expires' => time() - HOUR_IN_SECONDS,
-        'path' => '/',
-        'secure' => true,
-        'httponly' => true,
-        'samesite' => 'Strict',
-    ]);
-}
-
-function scarto_create_staff_session() {
-    $now = time();
-    $token = bin2hex(random_bytes(32));
-    $csrf = bin2hex(random_bytes(32));
-    $session = [
-        'csrf' => $csrf,
-        'csrf_hash' => hash('sha256', $csrf),
-        'created_at' => $now,
-        'last_seen' => $now,
-        'absolute_expires' => $now + SCARTO_SESSION_ABSOLUTE_TTL,
-        'auth_generation' => (int) get_option('scarto_auth_generation', 1),
-        'session_id' => bin2hex(random_bytes(8)),
-    ];
-
-    set_transient(scarto_session_key($token), $session, SCARTO_SESSION_TTL);
-    scarto_set_session_cookie($token, $session['absolute_expires']);
-
-    return ['csrf' => $csrf, 'session_id' => $session['session_id']];
-}
-
-function scarto_get_staff_session($request = null, $require_csrf = false) {
-    $token = isset($_COOKIE[SCARTO_SESSION_COOKIE])
-        ? sanitize_text_field(wp_unslash($_COOKIE[SCARTO_SESSION_COOKIE]))
-        : '';
-
-    if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
-        return new WP_Error('rest_forbidden', 'Sessione non valida.', ['status' => 401]);
-    }
-
-    $key = scarto_session_key($token);
-    $session = get_transient($key);
-    $now = time();
-
-    if (!is_array($session)
-        || empty($session['absolute_expires'])
-        || $session['absolute_expires'] < $now
-        || (int) ($session['auth_generation'] ?? 0) !== (int) get_option('scarto_auth_generation', 1)
-    ) {
-        delete_transient($key);
-        scarto_clear_session_cookie();
-        return new WP_Error('rest_forbidden', 'Sessione scaduta.', ['status' => 401]);
-    }
-
-    if ($require_csrf) {
-        $csrf = $request ? (string) $request->get_header('X-Scarto-CSRF') : '';
-        if ($csrf === '' || !hash_equals((string) $session['csrf_hash'], hash('sha256', $csrf))) {
-            return new WP_Error('rest_forbidden', 'Token CSRF non valido.', ['status' => 403]);
-        }
-    }
-
-    $session['last_seen'] = $now;
-    $remaining = min(SCARTO_SESSION_TTL, $session['absolute_expires'] - $now);
-    set_transient($key, $session, max(1, $remaining));
-
-    return ['token' => $token, 'key' => $key, 'data' => $session];
-}
-
 function scarto_verify_wp_admin_capability($request, $capability, $json_request = true, $body_limit = SCARTO_ADMIN_BODY_LIMIT) {
     $request_check = $json_request
         ? scarto_verify_json_request($request, $body_limit)
@@ -182,7 +98,7 @@ function scarto_verify_wp_admin_capability($request, $capability, $json_request 
     return true;
 }
 
-function scarto_verify_staff_session($request) {
+function scarto_verify_staff_manage($request) {
     return scarto_verify_wp_admin_capability($request, SCARTO_CAP_MANAGE, true);
 }
 
@@ -208,21 +124,6 @@ function scarto_verify_settings_write($request) {
 
 function scarto_verify_privacy_access($request) {
     return scarto_verify_wp_admin_capability($request, SCARTO_CAP_PRIVACY, true);
-}
-
-function scarto_destroy_staff_session() {
-    $token = isset($_COOKIE[SCARTO_SESSION_COOKIE])
-        ? sanitize_text_field(wp_unslash($_COOKIE[SCARTO_SESSION_COOKIE]))
-        : '';
-    if (preg_match('/^[a-f0-9]{64}$/', $token)) {
-        delete_transient(scarto_session_key($token));
-    }
-    scarto_clear_session_cookie();
-}
-
-function scarto_invalidate_all_staff_sessions() {
-    $generation = (int) get_option('scarto_auth_generation', 1);
-    update_option('scarto_auth_generation', $generation + 1, false);
 }
 
 function scarto_private_response($data, $status = 200) {

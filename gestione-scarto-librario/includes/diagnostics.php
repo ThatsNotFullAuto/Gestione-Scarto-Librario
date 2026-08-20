@@ -141,6 +141,25 @@ function scarto_get_diagnostic_checks() {
     $add('mail', 'Trasporto email', true, $last_mail_detail . ' Un esito accettato non garantisce la consegna finale.', 'manual');
     $add('cache', 'Cache risposte private', true, 'Verificare esternamente che CDN/proxy rispettino Cache-Control: no-store.', 'manual');
 
+    $audit_migration = scarto_get_audit_privacy_migration_state();
+    $audit_migration_status = sanitize_key($audit_migration['status'] ?? 'pending');
+    $audit_migration_complete = $audit_migration_status === 'completed';
+    $audit_migration_detail = sprintf(
+        'Stato: %s. Record esaminati: %d; aggiornati: %d; errori: %d.%s',
+        $audit_migration_status,
+        absint($audit_migration['examined'] ?? 0),
+        absint($audit_migration['updated'] ?? 0),
+        absint($audit_migration['errors'] ?? 0),
+        !empty($audit_migration['completed_at']) ? ' Completata: ' . $audit_migration['completed_at'] . ' UTC.' : ''
+    );
+    $add(
+        'audit_privacy_migration',
+        'Bonifica privacy dei log storici',
+        $audit_migration_complete,
+        $audit_migration_detail,
+        $audit_migration_status === 'error' ? 'critical' : 'advisory'
+    );
+
     return $checks;
 }
 
@@ -169,6 +188,17 @@ function scarto_render_diagnostics() {
         <?php endforeach; ?>
         </tbody>
     </table>
+    <?php $migration = scarto_get_audit_privacy_migration_state(); ?>
+    <?php if (($migration['status'] ?? 'pending') !== 'completed' && current_user_can(SCARTO_CAP_PRIVACY)): ?>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="max-width:1000px;margin-top:16px">
+            <input type="hidden" name="action" value="scarto_retry_audit_privacy_migration">
+            <?php wp_nonce_field('scarto_retry_audit_privacy_migration'); ?>
+            <label for="scarto_audit_privacy_password"><strong>Riprova bonifica log</strong></label>
+            <p class="description">L'operazione riprende dal record successivo senza modificare prenotazioni, catalogo o impostazioni.</p>
+            <input id="scarto_audit_privacy_password" name="password" type="password" autocomplete="current-password" maxlength="72" required>
+            <?php submit_button('Pianifica nuovo tentativo', 'secondary', 'submit', false); ?>
+        </form>
+    <?php endif; ?>
     <?php
 }
 

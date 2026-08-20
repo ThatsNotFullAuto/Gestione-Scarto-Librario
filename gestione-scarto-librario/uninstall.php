@@ -1,7 +1,7 @@
 <?php
 /**
  * Uninstall script for Gestione Scarto Librario
- * Version: 9.4.6
+ * Version: 9.4.8
  *
  * This file runs when the plugin is deleted through the WordPress admin.
  * Data is preserved unless an administrator explicitly enabled deletion.
@@ -49,6 +49,8 @@ if ($delete_data) {
         'scarto_appearance',
         'scarto_admin_capabilities_version',
         'scarto_last_mail_status',
+        'scarto_audit_privacy_migration',
+        'scarto_audit_privacy_migration_lock',
     ];
 
     foreach ($options as $option) {
@@ -79,6 +81,7 @@ wp_clear_scheduled_hook('scarto_gdpr_data_cleanup');
 wp_clear_scheduled_hook('scarto_anonymize_old_ips');
 wp_clear_scheduled_hook('scarto_rate_limit_cleanup');
 wp_clear_scheduled_hook('scarto_cleanup_temp_files');
+wp_clear_scheduled_hook('scarto_audit_privacy_cleanup');
 
 foreach (glob(trailingslashit(get_temp_dir()) . 'scarto-reservation-*.pdf') ?: [] as $file) {
     if (is_file($file)) @unlink($file);

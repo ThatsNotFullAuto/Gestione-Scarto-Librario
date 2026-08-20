@@ -33,8 +33,12 @@ for (const requiredFile of [
   'includes/diagnostics.php',
   'includes/admin.php',
   'includes/audit-admin.php',
+  'includes/audit-privacy.php',
   'includes/data-tools.php',
   'tests/offline-backup-test.php',
+  'tests/offline-audit-privacy-test.php',
+  'tests/offline-reservation-pdf-test.php',
+  'tools/excel-security-test.mjs',
   'tools/verify-release.mjs',
   'security-tests/smoke-test.mjs',
   'security-tests/concurrency-test.mjs',
@@ -171,8 +175,8 @@ if (!/db_admin_auth_' \. get_current_user_id\(\) \. '_' \. \$ip/.test(mainPhp)) 
   failed = true;
   console.error('FAIL Il lockout della password del plugin non e isolato per account WordPress.');
 }
-if (!/\/admin\/reservations'[^\n]+scarto_api_create_staff_reservation[^\n]+scarto_verify_staff_session/.test(mainPhp)
-    || !/\/admin\/reservations\/resend'[^\n]+scarto_api_resend_reservation_email[^\n]+scarto_verify_staff_session/.test(mainPhp)
+if (!/\/admin\/reservations'[^\n]+scarto_api_create_staff_reservation[^\n]+scarto_verify_staff_manage/.test(mainPhp)
+    || !/\/admin\/reservations\/resend'[^\n]+scarto_api_resend_reservation_email[^\n]+scarto_verify_staff_manage/.test(mainPhp)
     || !/function scarto_api_create_staff_reservation[\s\S]+scarto_prepare_reservation_payload\([^\n]+true\)/.test(mainPhp)
     || !/function scarto_create_verified_reservation[\s\S]+scarto_get_email_blocklist_entry/.test(mainPhp)) {
   failed = true;
@@ -291,7 +295,10 @@ if (!/function scarto_get_public_catalog_page[\s\S]+SELECT id, autore, titolo, e
   failed = true;
   console.error('FAIL Lo stato di conservazione non e disponibile come testo accessibile con legenda.');
 }
-if (/function scarto_api_books_search[\s\S]+SELECT id, titolo, autore, scatola[\s\S]+function scarto_api_login/.test(mainPhp)) {
+const publicBookSearchStart = mainPhp.indexOf('function scarto_api_books_search');
+const publicBookSearchEnd = mainPhp.indexOf('\nfunction ', publicBookSearchStart + 10);
+const publicBookSearchFunction = mainPhp.slice(publicBookSearchStart, publicBookSearchEnd);
+if (/SELECT id, titolo, autore, scatola/.test(publicBookSearchFunction)) {
   failed = true;
   console.error('FAIL Il numero di scatola e esposto dalla ricerca pubblica.');
 }
@@ -305,6 +312,39 @@ if (!/requested_books' => scarto_get_pending_book_details/.test(mainPhp)
     || /\$payload\['booksDetails'\] \?\? \[\]/.test(mainPhp)) {
   failed = true;
   console.error('FAIL L export GDPR delle richieste OTP pendenti non ricostruisce i volumi da bookIds.');
+}
+
+const auditPrivacyPhp = fs.readFileSync('includes/audit-privacy.php', 'utf8');
+if (!/function scarto_sanitize_audit_details/.test(auditPrivacyPhp)
+    || !/scarto_audit_sensitive_detail_keys/.test(auditPrivacyPhp)
+    || !/email_hash/.test(auditPrivacyPhp)
+    || !/ip_hash/.test(auditPrivacyPhp)
+    || !/scarto_audit_privacy_cleanup/.test(auditPrivacyPhp)
+    || !/scarto_retry_audit_privacy_migration/.test(auditPrivacyPhp)) {
+  failed = true;
+  console.error('FAIL Bonifica dei metadati audit assente, incompleta o non recuperabile.');
+}
+if (/function scarto_api_(?:login|session|logout|recover_password|reset_password|change_password)/.test(mainPhp)
+    || /scarto_(?:create|get|destroy|invalidate_all)_staff_session/.test(securityPhp)
+    || /case '(?:login|reset_password|change_password)'/.test(restSchemaPhp)) {
+  failed = true;
+  console.error('FAIL Sono presenti residui eseguibili dell autenticazione staff proprietaria.');
+}
+if (/scarto_audit_log\([\s\S]{0,500}?'email_hash'\s*=>/.test(mainPhp)
+    || /scarto_audit_log\([\s\S]{0,500}?'ip_hash'\s*=>/.test(mainPhp)) {
+  failed = true;
+  console.error('FAIL Un evento audit registra ancora fingerprint personali ridondanti nei dettagli.');
+}
+const subjectAuditFunction = mainPhp.slice(
+  mainPhp.indexOf('function scarto_get_subject_audit_metadata'),
+  mainPhp.indexOf('function scarto_perform_gdpr_export')
+);
+if (!/WHERE subject_email = %s[\s\S]+ORDER BY id ASC"/.test(subjectAuditFunction)
+    || /ORDER BY id ASC LIMIT/.test(subjectAuditFunction)
+    || !/User-Agent prenotazione/.test(mainPhp)
+    || !/count\(\$audit_rows\) < \$limit/.test(mainPhp)) {
+  failed = true;
+  console.error('FAIL Gli export dell interessato non includono tutti i log, IP e User-Agent.');
 }
 if (!/function scarto_enrich_catalog_availability/.test(mainPhp)
     || !/reserved_until/.test(mainPhp)
@@ -373,12 +413,15 @@ const phpReservationPdfFunction = mainPhp.slice(
   mainPhp.indexOf('function scarto_generate_reservation_pdf'),
   mainPhp.indexOf('function scarto_generate_pdf_content')
 );
-if (!/array_chunk\(\$content_lines, (?:[1-4]?\d|50)\)/.test(phpReservationPdfFunction)
+if (!/Riepilogo Prenotazione Scarto Librario/.test(phpReservationPdfFunction)
+    || !/0\.145 0\.388 0\.922 rg/.test(phpReservationPdfFunction)
+    || !/\$ensure_space\(\$required_height/.test(phpReservationPdfFunction)
     || !/\/Type \/Pages \/Kids/.test(phpReservationPdfFunction)
     || !/Pagina .* di /.test(phpReservationPdfFunction)
+    || !/inventario/.test(phpReservationPdfFunction)
     || /if \(\$y < 50\) break/.test(phpReservationPdfFunction)) {
   failed = true;
-  console.error('FAIL Il fallback PDF PHP puo troncare le prenotazioni con molti volumi.');
+  console.error('FAIL Il PDF PHP non conserva stile, inventario o paginazione completa.');
 }
 const reserveLimitFunction = mainPhp.slice(
   mainPhp.indexOf('function scarto_api_reserve'),
